@@ -1,0 +1,6 @@
+{
+  "watch": ["server.js", "routes", "models", "config", "middleware"],
+  "ext": "js,json",
+  "ignore": ["services/queueService.js", "data/*", "*.log"],
+  "delay": 1500
+}

@@ -1,0 +1,245 @@
+const express = require('express');
+const router = express.Router();
+const queueService = require('../services/queueService');
+const Campaign = require('../models/Campaign');
+const Account = require('../models/Account');
+const { getIsConnected } = require('../config/db');
+const { getAccount, getDailyUsage } = require('../services/tokenService');
+
+const CHECKOUT_URL = process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://replyeo.lemonsqueezy.com/checkout/buy/f0ec5261-ef37-41a3-89ad-7acabe2d99ce';
+
+/**
+ * POST /api/campaign/start
+ * Starts a new bulk email sending campaign with free trial 5-email/day enforcement
+ */
+router.post('/start', async (req, res) => {
+  const { senderEmail, recipients, subjectTemplate, bodyTemplate, attachments } = req.body;
+
+  if (!senderEmail) {
+    return res.status(400).json({ success: false, error: 'Sender email is required' });
+  }
+
+  if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ success: false, error: 'Recipient list cannot be empty' });
+  }
+
+  if (!subjectTemplate) {
+    return res.status(400).json({ success: false, error: 'Subject / Title is required' });
+  }
+
+  if (!bodyTemplate) {
+    return res.status(400).json({ success: false, error: 'Message body is required' });
+  }
+
+  const cleanSender = senderEmail.toLowerCase().trim();
+  const prefilledCheckout = `${CHECKOUT_URL}?checkout[email]=${encodeURIComponent(cleanSender)}`;
+
+  // 1. Check Plan Status & Real-time Daily Usage for this Sender Account
+  const usage = await getDailyUsage(cleanSender);
+
+  // 2. Enforce Free Plan Limits (5 emails/day, no PDF/file attachments)
+  if (!usage.isPro) {
+    const FREE_LIMIT = usage.limit || 5;
+    const sentToday = usage.sentToday || 0;
+
+    // Check if daily limit already reached or exceeded
+    if (sentToday >= FREE_LIMIT) {
+      return res.status(403).json({
+        success: false,
+        upgradeRequired: true,
+        error: `Daily Free Trial limit reached (${sentToday}/${FREE_LIMIT} emails sent today). Please upgrade to Starter Pro ($1.99/mo) to unlock 2,000 emails/day!`,
+        checkoutUrl: prefilledCheckout
+      });
+    }
+
+    // Check recipients count vs remaining quota
+    if (recipients.length > (FREE_LIMIT - sentToday)) {
+      const remaining = Math.max(0, FREE_LIMIT - sentToday);
+      return res.status(403).json({
+        success: false,
+        upgradeRequired: true,
+        error: `You have ${remaining} emails left today (${sentToday}/${FREE_LIMIT} used), but entered ${recipients.length} recipients. Upgrade to Starter Pro ($1.99/mo) for 2,000 emails/day!`,
+        checkoutUrl: prefilledCheckout
+      });
+    }
+
+    // Check attachment restrictions
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      return res.status(403).json({
+        success: false,
+        upgradeRequired: true,
+        error: 'PDF and image attachments are exclusive to the Starter Pro ($1.99/mo) plan.',
+        checkoutUrl: prefilledCheckout
+      });
+    }
+  }
+
+  try {
+    const job = queueService.createCampaign({
+      senderEmail: cleanSender,
+      recipients,
+      subjectTemplate,
+      bodyTemplate,
+      attachments: Array.isArray(attachments) ? attachments : []
+    });
+
+    res.json({
+      success: true,
+      jobId: job.id,
+      totalRecipients: job.total,
+      attachmentsCount: (job.attachments || []).length,
+      message: 'Campaign scheduled successfully'
+    });
+  } catch (err) {
+    console.error('Error starting campaign:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/campaign/history
+ * Get past campaign history from MongoDB
+ */
+router.get('/history', async (req, res) => {
+  if (getIsConnected()) {
+    try {
+      const campaigns = await Campaign.find({})
+        .sort({ createdAt: -1 })
+        .limit(30)
+        .select('-logs')
+        .lean();
+      return res.json({ success: true, campaigns });
+    } catch (err) {
+      console.warn('[CampaignRoutes] History fetch error:', err.message);
+    }
+  }
+  res.json({ success: true, campaigns: [] });
+});
+
+/**
+ * GET /api/campaign/stream/:jobId
+ * Server-Sent Events (SSE) endpoint for live streaming of dispatch progress
+ */
+router.get('/stream/:jobId', async (req, res) => {
+  const { jobId } = req.params;
+  let job = queueService.getCampaign(jobId);
+
+  // Set SSE Headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  if (job) {
+    res.write(`event: initial_state\ndata: ${JSON.stringify({
+      jobId: job.id,
+      status: job.status,
+      total: job.total,
+      sent: job.sent,
+      failed: job.failed,
+      logs: job.logs
+    })}\n\n`);
+
+    queueService.addSseClient(jobId, res);
+  } else if (getIsConnected()) {
+    try {
+      const doc = await Campaign.findOne({ jobId }).lean();
+      if (doc) {
+        res.write(`event: initial_state\ndata: ${JSON.stringify({
+          jobId: doc.jobId,
+          status: doc.status,
+          total: doc.totalRecipients,
+          sent: doc.sentCount,
+          failed: doc.failedCount,
+          logs: doc.logs || []
+        })}\n\n`);
+      }
+    } catch (e) {}
+  }
+});
+
+/**
+ * GET /api/campaign/:jobId/status
+ * Always merges in-memory + MongoDB — takes whichever is most complete
+ */
+router.get('/:jobId/status', async (req, res) => {
+  const { jobId } = req.params;
+  const memJob = queueService.getCampaign(jobId);
+
+  let dbDoc = null;
+  if (getIsConnected()) {
+    try {
+      dbDoc = await Campaign.findOne({ jobId }).lean();
+    } catch (e) {}
+  }
+
+  // Nothing at all
+  if (!memJob && !dbDoc) {
+    return res.status(404).json({ success: false, error: 'Campaign job not found' });
+  }
+
+  // Merge: prefer the state that is further along
+  const memSent    = memJob ? (memJob.sent   || 0) : 0;
+  const memFailed  = memJob ? (memJob.failed  || 0) : 0;
+  const memTotal   = memJob ? (memJob.total   || 0) : 0;
+  const memStatus  = memJob ? memJob.status : null;
+  const memLogs    = memJob ? (memJob.logs || []) : [];
+
+  const dbSent     = dbDoc  ? (dbDoc.sentCount    || 0) : 0;
+  const dbFailed   = dbDoc  ? (dbDoc.failedCount   || 0) : 0;
+  const dbTotal    = dbDoc  ? (dbDoc.totalRecipients || 0) : 0;
+  const dbStatus   = dbDoc  ? dbDoc.status : null;
+  const dbLogs     = dbDoc  ? (dbDoc.logs || []) : [];
+
+  // Take highest counts (most complete)
+  const sent   = Math.max(memSent,   dbSent);
+  const failed = Math.max(memFailed, dbFailed);
+  const total  = Math.max(memTotal,  dbTotal);
+
+  // Status: completed > stopped > running > pending
+  const rankStatus = s => ({ completed: 4, stopped: 3, running: 2, pending: 1 }[s] || 0);
+  const status = rankStatus(memStatus) >= rankStatus(dbStatus) ? (memStatus || dbStatus) : (dbStatus || memStatus);
+
+  // Logs: take whichever list is longer
+  const logs = memLogs.length >= dbLogs.length ? memLogs : dbLogs;
+
+  res.json({ success: true, job: { id: jobId, status, total, sent, failed, logs } });
+});
+
+/**
+ * POST /api/campaign/:jobId/pause
+ */
+router.post('/:jobId/pause', (req, res) => {
+  try {
+    const job = queueService.pauseCampaign(req.params.jobId);
+    res.json({ success: true, status: job.status });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/campaign/:jobId/resume
+ */
+router.post('/:jobId/resume', (req, res) => {
+  try {
+    const job = queueService.resumeCampaign(req.params.jobId);
+    res.json({ success: true, status: job.status });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/campaign/:jobId/stop
+ */
+router.post('/:jobId/stop', (req, res) => {
+  try {
+    const job = queueService.stopCampaign(req.params.jobId);
+    res.json({ success: true, status: job.status });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+module.exports = router;
