@@ -51,7 +51,7 @@ app.use('/api/subscription', subscriptionRoutes);
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
-    service: 'Bulk Gmail Sender Backend',
+    service: 'SendEO Backend Platform',
     version: '2.0.0',
     database: {
       connected: getIsConnected(),
@@ -86,7 +86,7 @@ app.use((err, req, res, next) => {
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`===============================================`);
-    console.log(`🚀 Bulk Gmail Sender Server running on port ${PORT}`);
+    console.log(`🚀 SendEO Backend Server running on port ${PORT}`);
     console.log(`👉 Health Check: http://localhost:${PORT}/`);
     console.log(`👉 MongoDB: ${getIsConnected() ? 'Connected' : 'JSON Fallback'}`);
     console.log(`👉 Cloudinary: ${isCloudinaryConfigured() ? 'Ready' : 'Pending Env Credentials'}`);

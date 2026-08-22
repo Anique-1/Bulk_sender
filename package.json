@@ -1,7 +1,7 @@
 {
-  "name": "bulk-gmail-sender-backend",
-  "version": "1.0.0",
-  "description": "Backend for Bulk Gmail Sender Chrome Extension with Google OAuth2 and Gmail API",
+  "name": "sendeo-backend",
+  "version": "2.0.0",
+  "description": "Backend platform for SendEO Cold Outreach with Google OAuth2, Queue Service, and MongoDB",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

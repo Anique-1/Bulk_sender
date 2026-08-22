@@ -160,7 +160,7 @@ const PRIVACY_HTML = `<!DOCTYPE html>
     <p>If you have any questions or concerns regarding this Privacy Policy or wish to request data deletion, please contact:</p>
 
     <div class="footer">
-      &copy; 2026 Bulk Gmail Sender Extension. All rights reserved. Bulk Gmail Sender is not affiliated with Google Inc.
+      &copy; 2026 SendEO. All rights reserved. SendEO is powered by ReplyEO and is not affiliated with Google Inc.
     </div>
   </div>
 </body>
@@ -254,10 +254,10 @@ const TERMS_HTML = `<!DOCTYPE html>
     <div class="header">
       <span class="brand-badge">Terms & Conditions</span>
       <h1>Terms of Service</h1>
-      <p class="updated">Product: <strong>Bulk Gmail Sender Extension</strong> | Last Updated: August 2026</p>
+      <p class="updated">Product: <strong>SendEO</strong> | Last Updated: August 2026</p>
     </div>
 
-    <p>By installing, connecting, or using <strong>Bulk Gmail Sender Extension</strong>, you agree to comply with these Terms of Service.</p>
+    <p>By installing, connecting, or using <strong>SendEO</strong>, you agree to comply with these Terms of Service.</p>
 
     <h2>1. Acceptable Use & Anti-Spam Policy</h2>
     <p>Users must comply with all applicable email marketing laws (including CAN-SPAM Act and GDPR) and Google's Acceptable Use Policies. You agree not to use this software to send unsolicited spam, illegal content, phishing schemes, or malicious attachments.</p>
@@ -269,7 +269,7 @@ const TERMS_HTML = `<!DOCTYPE html>
     <p>Paid tiers (such as Starter Plan at $1.99/mo) are managed via Lemon Squeezy. Subscriptions can be canceled at any time from your customer billing portal.</p>
 
     <h2>4. Disclaimer & Limitation of Liability</h2>
-    <p>The software is provided "as is" without warranty of any kind. Bulk Gmail Sender Extension shall not be liable for account suspensions or deliverability issues resulting from violation of email provider guidelines.</p>
+    <p>The software is provided "as is" without warranty of any kind. SendEO shall not be liable for account suspensions or deliverability issues resulting from violation of email provider guidelines.</p>
 
     <h2>5. Contact Information</h2>
     <p>For support or questions regarding these terms, please contact:<br>
@@ -277,7 +277,7 @@ const TERMS_HTML = `<!DOCTYPE html>
     Website: <a href="https://app.replyeo.com" target="_blank" rel="noopener noreferrer">https://app.replyeo.com</a></p>
 
     <div class="footer">
-      &copy; 2026 Bulk Gmail Sender Extension. All rights reserved.
+      &copy; 2026 SendEO. All rights reserved. Powered by ReplyEO.
     </div>
   </div>
 </body>
