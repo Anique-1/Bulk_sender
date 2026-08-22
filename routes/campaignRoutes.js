@@ -6,7 +6,7 @@ const Account = require('../models/Account');
 const { getIsConnected } = require('../config/db');
 const { getAccount, getDailyUsage, listAccounts } = require('../services/tokenService');
 
-const CHECKOUT_URL = process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://replyeo.lemonsqueezy.com/checkout/buy/f0ec5261-ef37-41a3-89ad-7acabe2d99ce';
+const CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
 
 /**
  * POST /api/campaign/start
@@ -33,7 +33,9 @@ router.post('/start', async (req, res) => {
   }
 
   const cleanSender = senderEmail.toLowerCase().trim();
-  const prefilledCheckout = `${CHECKOUT_URL}?checkout[email]=${encodeURIComponent(cleanSender)}`;
+  const prefilledCheckout = CHECKOUT_URL.includes('gumroad.com')
+    ? `${CHECKOUT_URL}&email=${encodeURIComponent(cleanSender)}`
+    : `${CHECKOUT_URL}?checkout[email]=${encodeURIComponent(cleanSender)}`;
 
   // 1. Check Plan Status & Real-time Daily Usage for this Sender Account
   const usage = await getDailyUsage(cleanSender, profileId);

@@ -4,9 +4,8 @@ const crypto = require('crypto');
 const Account = require('../models/Account');
 const LicenseKey = require('../models/LicenseKey');
 const { getIsConnected } = require('../config/db');
-const { getAccount, saveAccount, getDailyUsage } = require('../services/tokenService');
-
-const DEFAULT_CHECKOUT_URL = process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://replyeo.lemonsqueezy.com/checkout/buy/f0ec5261-ef37-41a3-89ad-7acabe2d99ce';
+const { getDailyUsage } = require('../services/tokenService');
+const DEFAULT_CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
 
 /**
  * GET /api/subscription/plans
@@ -300,4 +299,78 @@ router.post('/webhook', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/subscription/gumroad-webhook
+ * Gumroad Ping Webhook Handler for sales, subscriptions, and cancellations
+ */
+router.post('/gumroad-webhook', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const customerEmail = (payload.email || payload.buyer_email)?.toLowerCase().trim();
+    const productPermalink = payload.permalink || payload.product_permalink || payload.short_product_id;
+    const isCancelled = payload.cancelled === 'true' || payload.subscription_cancelled === 'true' || payload.refunded === 'true';
+    const saleId = payload.sale_id || payload.order_number;
+    const licenseKey = payload.license_key || null;
+
+    console.log(`[Gumroad Webhook] 📥 Received Gumroad Ping for email: "${customerEmail}", permalink: "${productPermalink}", cancelled: ${isCancelled}`);
+
+    if (customerEmail) {
+      if (isCancelled) {
+        if (getIsConnected()) {
+          await Account.findOneAndUpdate(
+            { email: customerEmail },
+            { $set: { 'subscription.status': 'expired' } }
+          );
+        }
+        console.log(`[Gumroad Webhook] ⚠️ Subscription cancelled for ${customerEmail}`);
+      } else {
+        // Activate Starter Pro ($1.99/mo)
+        if (getIsConnected()) {
+          await Account.findOneAndUpdate(
+            { email: customerEmail },
+            {
+              $set: {
+                'subscription.plan': 'starter_1_99',
+                'subscription.status': 'active',
+                'subscription.accountLimit': 1,
+                'subscription.gumroadSaleId': saleId ? String(saleId) : null,
+                'subscription.licenseKey': licenseKey ? String(licenseKey) : null,
+                'usage.dailyLimit': 2000
+              }
+            },
+            { upsert: true, returnDocument: 'after' }
+          );
+        }
+
+        // Local JSON Fallback Sync
+        const fs = require('fs');
+        const path = require('path');
+        const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, '../data');
+        const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
+        if (fs.existsSync(ACCOUNTS_FILE)) {
+          try {
+            const raw = fs.readFileSync(ACCOUNTS_FILE, 'utf8');
+            const accounts = JSON.parse(raw);
+            const acc = accounts.find(a => a.email.toLowerCase() === customerEmail);
+            if (acc) {
+              acc.subscription = { plan: 'starter_1_99', status: 'active', accountLimit: 1, licenseKey };
+              if (!acc.usage) acc.usage = { dailySentCount: 0, lastSentDate: new Date().toISOString().split('T')[0], dailyLimit: 2000, totalSentAllTime: 0 };
+              acc.usage.dailyLimit = 2000;
+              fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf8');
+            }
+          } catch (e) {}
+        }
+
+        console.log(`[Gumroad Webhook] 🟢 Successfully upgraded ${customerEmail} to Starter Pro via Gumroad!`);
+      }
+    }
+
+    res.json({ success: true, received: true, email: customerEmail });
+  } catch (err) {
+    console.error('[Gumroad Webhook] Error processing ping:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;
+

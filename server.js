@@ -90,7 +90,7 @@ if (!process.env.VERCEL) {
     console.log(`👉 Health Check: http://localhost:${PORT}/`);
     console.log(`👉 MongoDB: ${getIsConnected() ? 'Connected' : 'JSON Fallback'}`);
     console.log(`👉 Cloudinary: ${isCloudinaryConfigured() ? 'Ready' : 'Pending Env Credentials'}`);
-    console.log(`👉 Checkout: https://replyeo.lemonsqueezy.com/checkout/buy/f0ec5261-ef37-41a3-89ad-7acabe2d99ce`);
+    console.log(`👉 Checkout: https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true`);
     console.log(`===============================================`);
   });
 }
