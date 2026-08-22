@@ -5,7 +5,7 @@ const { uploadToCloudinary, deleteFromCloudinary, listRecentFiles } = require('.
 const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { getAccount } = require('../services/tokenService');
 const Account = require('../models/Account');
-const CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
+const CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
 
 // Multer memory storage (works seamlessly in serverless and standard Node)
 const storage = multer.memoryStorage();

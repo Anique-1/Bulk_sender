@@ -5,7 +5,7 @@ const Account = require('../models/Account');
 const LicenseKey = require('../models/LicenseKey');
 const { getIsConnected } = require('../config/db');
 const { getDailyUsage } = require('../services/tokenService');
-const DEFAULT_CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
+const DEFAULT_CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
 
 /**
  * GET /api/subscription/plans

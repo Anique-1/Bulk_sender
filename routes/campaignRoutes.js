@@ -6,7 +6,7 @@ const Account = require('../models/Account');
 const { getIsConnected } = require('../config/db');
 const { getAccount, getDailyUsage, listAccounts } = require('../services/tokenService');
 
-const CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
+const CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
 
 /**
  * POST /api/campaign/start
