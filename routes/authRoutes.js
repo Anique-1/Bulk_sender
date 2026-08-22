@@ -60,12 +60,33 @@ router.post('/manual', async (req, res) => {
 });
 
 /**
+ * GET /api/auth/google
+ * Direct redirect endpoint to Google OAuth consent screen
+ */
+router.get('/google', (req, res) => {
+  const profileId = req.query.profileId || req.headers['x-profile-id'] || null;
+  try {
+    const oauth2Client = getOAuth2Client();
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: SCOPES,
+      state: profileId ? Buffer.from(JSON.stringify({ profileId })).toString('base64') : undefined
+    });
+    res.redirect(authUrl);
+  } catch (err) {
+    console.error('Error initiating Google OAuth redirect:', err);
+    res.status(500).send(`Error starting Google OAuth: ${err.message}`);
+  }
+});
+
+/**
  * GET /api/auth/google/url
  * Returns the Google OAuth authorization URL
  * Embeds the profileId in the OAuth state param so the callback can scope the account.
  */
 router.get('/google/url', (req, res) => {
-  const profileId = req.headers['x-profile-id'] || null;
+  const profileId = req.query.profileId || req.headers['x-profile-id'] || null;
   try {
     const oauth2Client = getOAuth2Client();
     const authUrl = oauth2Client.generateAuthUrl({

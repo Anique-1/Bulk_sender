@@ -6,7 +6,7 @@ const PRIVACY_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Policy - Bulk Gmail Sender Extension</title>
+  <title>Privacy Policy - SendEO</title>
   <style>
     :root {
       --primary: #10b981;
@@ -109,14 +109,14 @@ const PRIVACY_HTML = `<!DOCTYPE html>
   <div class="container">
     <div class="header">
       <span class="brand-badge">Official Policy</span>
-      <h1>Privacy Policy</h1>
-      <p class="updated">Product: <strong>Bulk Gmail Sender Extension</strong> | Last Updated: August 2026</p>
+      <h1>Privacy Policy for SendEO</h1>
+      <p class="updated">Product: <strong>SendEO</strong> | Last Updated: August 2026</p>
     </div>
 
-    <p>Welcome to <strong>Bulk Gmail Sender Extension</strong>, a productivity tool and Google Chrome extension. We respect your privacy and are committed to protecting your personal information and Google user data.</p>
+    <p>Welcome to <strong>SendEO</strong>, a productivity tool and Google Chrome extension. We respect your privacy and are committed to protecting your personal information and Google user data.</p>
 
     <h2>1. Information We Collect</h2>
-    <p>When you use Bulk Gmail Sender Extension, we may process the following information solely to provide core sending capabilities:</p>
+    <p>When you use SendEO, we may process the following information solely to provide core sending capabilities:</p>
     <ul>
       <li><strong>Google Account Information:</strong> Your authorized email address, display name, and OAuth 2.0 access/refresh tokens obtained when you connect your Google account.</li>
       <li><strong>Email Content & Templates:</strong> Email subject lines, recipient lists (CSV uploads or manual input), message bodies, and attachments that you draft to send.</li>
@@ -133,7 +133,7 @@ const PRIVACY_HTML = `<!DOCTYPE html>
 
     <div class="highlight-box">
       <h3>🔒 Google API Limited Use Disclosure</h3>
-      <p>Bulk Gmail Sender Extension's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+      <p>SendEO's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
       <p>We <strong>DO NOT</strong> read your inbox emails, sell your data, use your email contents for advertising, or train artificial intelligence/machine learning models on your private messages.</p>
     </div>
 
@@ -154,13 +154,10 @@ const PRIVACY_HTML = `<!DOCTYPE html>
     </ul>
 
     <h2>5. Data Retention and Account Deletion</h2>
-    <p>You can revoke Bulk Gmail Sender Extension's access to your Google account at any time via your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">Google Account Permissions Settings</a> or by disconnecting your account inside the extension. Upon disconnection, your OAuth tokens are immediately invalidated.</p>
+    <p>You can revoke SendEO's access to your Google account at any time via your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">Google Account Permissions Settings</a> or by disconnecting your account inside the extension. Upon disconnection, your OAuth tokens are immediately invalidated.</p>
 
     <h2>6. Contact Us</h2>
     <p>If you have any questions or concerns regarding this Privacy Policy or wish to request data deletion, please contact:</p>
-    <p><strong>Bulk Gmail Sender Support</strong><br>
-    Email: <a href="mailto:muhammadanique81@gmail.com">muhammadanique81@gmail.com</a><br>
-    Website: <a href="https://app.replyeo.com" target="_blank" rel="noopener noreferrer">https://app.replyeo.com</a></p>
 
     <div class="footer">
       &copy; 2026 Bulk Gmail Sender Extension. All rights reserved. Bulk Gmail Sender is not affiliated with Google Inc.
@@ -174,7 +171,7 @@ const TERMS_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Terms of Service - Bulk Gmail Sender Extension</title>
+  <title>Terms of Service - SendEO</title>
   <style>
     :root {
       --primary: #10b981;
