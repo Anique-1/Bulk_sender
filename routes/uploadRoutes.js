@@ -42,7 +42,7 @@ router.post('/', upload.single('file'), async (req, res) => {
         if (dbAcc && dbAcc.subscription && (dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active') {
           isPro = true;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (!isPro) {

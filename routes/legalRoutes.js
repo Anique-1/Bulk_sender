@@ -120,7 +120,7 @@ const PRIVACY_HTML = `<!DOCTYPE html>
     <ul>
       <li><strong>Google Account Information:</strong> Your authorized email address, display name, and OAuth 2.0 access/refresh tokens obtained when you connect your Google account.</li>
       <li><strong>Email Content & Templates:</strong> Email subject lines, recipient lists (CSV uploads or manual input), message bodies, and attachments that you draft to send.</li>
-      <li><strong>Usage & Subscription Data:</strong> Daily email dispatch counts to enforce plan quotas and subscription status linked with payment providers (e.g. Lemon Squeezy).</li>
+      <li><strong>Usage & Subscription Data:</strong> Daily email dispatch counts to enforce plan quotas and subscription status linked with payment providers (e.g. Gumroad).</li>
     </ul>
 
     <h2>2. How We Use Your Information</h2>
@@ -149,7 +149,7 @@ const PRIVACY_HTML = `<!DOCTYPE html>
     <p>We only interact with trusted infrastructure providers required to operate the service:</p>
     <ul>
       <li><strong>Google APIs:</strong> For OAuth authentication and sending emails.</li>
-      <li><strong>Lemon Squeezy:</strong> For processing subscription payments securely without storing your credit card data on our servers.</li>
+      <li><strong>Gumroad:</strong> For processing subscription payments securely without storing your credit card data on our servers.</li>
       <li><strong>MongoDB / Cloudinary:</strong> For secure database persistence and media hosting.</li>
     </ul>
 
@@ -266,7 +266,7 @@ const TERMS_HTML = `<!DOCTYPE html>
     <p>You acknowledge that you are using your own connected Gmail account to dispatch emails. You are responsible for maintaining good sender reputation and abiding by Gmail's daily sending limits.</p>
 
     <h2>3. Subscriptions & Payments</h2>
-    <p>Paid tiers (such as Starter Plan at $1.99/mo) are managed via Lemon Squeezy. Subscriptions can be canceled at any time from your customer billing portal.</p>
+    <p>Paid tiers (such as Starter Plan at $1.99/mo) are managed via Gumroad. Subscriptions can be canceled at any time from your customer billing portal or receipt email.</p>
 
     <h2>4. Disclaimer & Limitation of Liability</h2>
     <p>The software is provided "as is" without warranty of any kind. SendEO shall not be liable for account suspensions or deliverability issues resulting from violation of email provider guidelines.</p>

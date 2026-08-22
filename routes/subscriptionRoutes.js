@@ -88,7 +88,9 @@ router.get('/status/:email', async (req, res) => {
     remaining: usage.remaining,
     accountLimit: 1,
     expiryDate: usage.expiryDate,
-    checkoutUrl: `${DEFAULT_CHECKOUT_URL}?checkout[email]=${encodeURIComponent(cleanEmail)}`
+    checkoutUrl: DEFAULT_CHECKOUT_URL.includes('gumroad.com')
+      ? `${DEFAULT_CHECKOUT_URL}&email=${encodeURIComponent(cleanEmail)}`
+      : `${DEFAULT_CHECKOUT_URL}?checkout[email]=${encodeURIComponent(cleanEmail)}`
   });
 });
 
@@ -277,7 +279,7 @@ router.post('/webhook', async (req, res) => {
               acc.usage.dailyLimit = 2000;
               fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf8');
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         console.log(`[Webhook] 🟢 Successfully upgraded ${customerEmail} to Starter Pro ($1.99/mo)!`);
@@ -358,7 +360,7 @@ router.post('/gumroad-webhook', async (req, res) => {
               acc.usage.dailyLimit = 2000;
               fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf8');
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         console.log(`[Gumroad Webhook] 🟢 Successfully upgraded ${customerEmail} to Starter Pro via Gumroad!`);

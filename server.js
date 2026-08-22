@@ -23,7 +23,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-signature', 'x-profile-id']
 }));
 
-app.use(express.json({ 
+app.use(express.json({
   limit: '25mb',
   verify: (req, res, buf) => {
     req.rawBody = buf;

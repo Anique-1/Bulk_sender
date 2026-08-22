@@ -173,7 +173,7 @@ router.get('/stream/:jobId', async (req, res) => {
           logs: doc.logs || []
         })}\n\n`);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 });
 
@@ -189,7 +189,7 @@ router.get('/:jobId/status', async (req, res) => {
   if (getIsConnected()) {
     try {
       dbDoc = await Campaign.findOne({ jobId }).lean();
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // Nothing at all
@@ -198,22 +198,22 @@ router.get('/:jobId/status', async (req, res) => {
   }
 
   // Merge: prefer the state that is further along
-  const memSent    = memJob ? (memJob.sent   || 0) : 0;
-  const memFailed  = memJob ? (memJob.failed  || 0) : 0;
-  const memTotal   = memJob ? (memJob.total   || 0) : 0;
-  const memStatus  = memJob ? memJob.status : null;
-  const memLogs    = memJob ? (memJob.logs || []) : [];
+  const memSent = memJob ? (memJob.sent || 0) : 0;
+  const memFailed = memJob ? (memJob.failed || 0) : 0;
+  const memTotal = memJob ? (memJob.total || 0) : 0;
+  const memStatus = memJob ? memJob.status : null;
+  const memLogs = memJob ? (memJob.logs || []) : [];
 
-  const dbSent     = dbDoc  ? (dbDoc.sentCount    || 0) : 0;
-  const dbFailed   = dbDoc  ? (dbDoc.failedCount   || 0) : 0;
-  const dbTotal    = dbDoc  ? (dbDoc.totalRecipients || 0) : 0;
-  const dbStatus   = dbDoc  ? dbDoc.status : null;
-  const dbLogs     = dbDoc  ? (dbDoc.logs || []) : [];
+  const dbSent = dbDoc ? (dbDoc.sentCount || 0) : 0;
+  const dbFailed = dbDoc ? (dbDoc.failedCount || 0) : 0;
+  const dbTotal = dbDoc ? (dbDoc.totalRecipients || 0) : 0;
+  const dbStatus = dbDoc ? dbDoc.status : null;
+  const dbLogs = dbDoc ? (dbDoc.logs || []) : [];
 
   // Take highest counts (most complete)
-  const sent   = Math.max(memSent,   dbSent);
+  const sent = Math.max(memSent, dbSent);
   const failed = Math.max(memFailed, dbFailed);
-  const total  = Math.max(memTotal,  dbTotal);
+  const total = Math.max(memTotal, dbTotal);
 
   // Status: completed > stopped > running > pending
   const rankStatus = s => ({ completed: 4, stopped: 3, running: 2, pending: 1 }[s] || 0);
