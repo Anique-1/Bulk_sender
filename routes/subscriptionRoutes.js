@@ -184,7 +184,7 @@ router.post('/simulate-upgrade', async (req, res) => {
             'subscription.accountLimit': plan === 'pro_multi' ? 5 : 1
           }
         },
-        { new: true, upsert: true }
+        { upsert: true, returnDocument: 'after' }
       );
       return res.json({ success: true, message: `Account upgraded to ${plan}`, account });
     } catch (err) {
@@ -258,7 +258,7 @@ router.post('/webhook', async (req, res) => {
                 'usage.dailyLimit': 2000
               }
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
           );
         }
 

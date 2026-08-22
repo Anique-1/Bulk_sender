@@ -156,7 +156,7 @@ async function saveAccount(profile, tokens, profileId) {
   if (getIsConnected()) {
     try {
       await Account.findOneAndUpdate(
-        { email: accountData.email, profileId: profileId || null },
+        { email: accountData.email },
         { 
           $set: {
             id: accountData.id,
@@ -173,7 +173,7 @@ async function saveAccount(profile, tokens, profileId) {
             usage: accountData.usage
           }
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
       console.log(`[MongoDB] 🟢 Account synced: ${accountData.email} (profile: ${profileId || 'global'})`);
     } catch (dbErr) {
@@ -254,7 +254,7 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure,
   if (getIsConnected()) {
     try {
       await Account.findOneAndUpdate(
-        { email: accountData.email, profileId: profileId || null },
+        { email: accountData.email },
         { 
           $set: {
             id: accountData.id,
@@ -270,7 +270,7 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure,
             usage: accountData.usage
           }
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
       console.log(`[MongoDB] 🟢 Manual Account synced: ${accountData.email} (profile: ${profileId || 'global'})`);
     } catch (dbErr) {
