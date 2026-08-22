@@ -99,6 +99,12 @@ async function saveAccount(profile, tokens, profileId) {
   if (getIsConnected()) {
     try {
       existingAccount = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
+      if (!existingAccount || !existingAccount.usage || (existingAccount.usage.totalSentAllTime === 0 && existingAccount.usage.dailySentCount === 0)) {
+        const fallbackAcc = await Account.findOne({ email: cleanEmail, $or: [{ 'usage.totalSentAllTime': { $gt: 0 } }, { 'usage.dailySentCount': { $gt: 0 } }] }) || await Account.findOne({ email: cleanEmail });
+        if (fallbackAcc) {
+          existingAccount = fallbackAcc;
+        }
+      }
     } catch (e) {}
   }
 
@@ -130,8 +136,8 @@ async function saveAccount(profile, tokens, profileId) {
       accountLimit: 1
     },
     usage: {
-      dailySentCount: (existingAccount && existingAccount.usage) ? existingAccount.usage.dailySentCount : 0,
-      lastSentDate: new Date().toISOString().split('T')[0],
+      dailySentCount: (existingAccount && existingAccount.usage) ? (existingAccount.usage.dailySentCount || 0) : 0,
+      lastSentDate: (existingAccount && existingAccount.usage && existingAccount.usage.lastSentDate) ? existingAccount.usage.lastSentDate : new Date().toISOString().split('T')[0],
       dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25,
       totalSentAllTime: (existingAccount && existingAccount.usage) ? (existingAccount.usage.totalSentAllTime || 0) : 0
     },
@@ -191,6 +197,12 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure,
   if (getIsConnected()) {
     try {
       existingAccount = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
+      if (!existingAccount || !existingAccount.usage || (existingAccount.usage.totalSentAllTime === 0 && existingAccount.usage.dailySentCount === 0)) {
+        const fallbackAcc = await Account.findOne({ email: cleanEmail, $or: [{ 'usage.totalSentAllTime': { $gt: 0 } }, { 'usage.dailySentCount': { $gt: 0 } }] }) || await Account.findOne({ email: cleanEmail });
+        if (fallbackAcc) {
+          existingAccount = fallbackAcc;
+        }
+      }
     } catch (e) {}
   }
 
@@ -358,7 +370,13 @@ async function getDailyUsage(email, profileId) {
 
   if (getIsConnected()) {
     try {
-      const dbAcc = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
+      let dbAcc = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
+      if (!dbAcc || !dbAcc.usage || (dbAcc.usage.totalSentAllTime === 0 && dbAcc.usage.dailySentCount === 0)) {
+        const fallbackAcc = await Account.findOne({ email: cleanEmail, $or: [{ 'usage.totalSentAllTime': { $gt: 0 } }, { 'usage.dailySentCount': { $gt: 0 } }] }) || await Account.findOne({ email: cleanEmail });
+        if (fallbackAcc) {
+          dbAcc = fallbackAcc;
+        }
+      }
       if (dbAcc) {
         const isPro = dbAcc.subscription && (dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active';
         const sentToday = (dbAcc.usage && dbAcc.usage.lastSentDate === todayStr) ? (dbAcc.usage.dailySentCount || 0) : 0;
@@ -375,7 +393,9 @@ async function getDailyUsage(email, profileId) {
           expiryDate: dbAcc.subscription ? (dbAcc.subscription.currentPeriodEnd || dbAcc.subscription.trialEndsAt) : null
         };
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[getDailyUsage] DB query error:', e.message);
+    }
   }
 
   const localAcc = getAccount(cleanEmail, profileId);
