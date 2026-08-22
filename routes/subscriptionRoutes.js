@@ -87,6 +87,7 @@ router.get('/status/:email', async (req, res) => {
     limit: usage.limit,
     remaining: usage.remaining,
     accountLimit: 1,
+    expiryDate: usage.expiryDate,
     checkoutUrl: `${DEFAULT_CHECKOUT_URL}?checkout[email]=${encodeURIComponent(cleanEmail)}`
   });
 });

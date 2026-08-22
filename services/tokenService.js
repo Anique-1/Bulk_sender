@@ -362,7 +362,8 @@ async function getDailyUsage(email, profileId) {
           limit,
           remaining: Math.max(0, limit - sentToday),
           plan: dbAcc.subscription ? dbAcc.subscription.plan : 'free',
-          status: dbAcc.subscription ? dbAcc.subscription.status : 'trial'
+          status: dbAcc.subscription ? dbAcc.subscription.status : 'trial',
+          expiryDate: dbAcc.subscription ? (dbAcc.subscription.currentPeriodEnd || dbAcc.subscription.trialEndsAt) : null
         };
       }
     } catch (e) {}
@@ -378,7 +379,8 @@ async function getDailyUsage(email, profileId) {
     limit,
     remaining: Math.max(0, limit - sentToday),
     plan: localAcc && localAcc.subscription ? localAcc.subscription.plan : 'free',
-    status: localAcc && localAcc.subscription ? localAcc.subscription.status : 'trial'
+    status: localAcc && localAcc.subscription ? localAcc.subscription.status : 'trial',
+    expiryDate: localAcc && localAcc.subscription ? (localAcc.subscription.currentPeriodEnd || localAcc.subscription.trialEndsAt) : null
   };
 }
 
