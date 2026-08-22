@@ -14,6 +14,7 @@ const CHECKOUT_URL = process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://replyeo.l
  */
 router.post('/start', async (req, res) => {
   const { senderEmail, recipients, subjectTemplate, bodyTemplate, attachments } = req.body;
+  const profileId = req.headers['x-profile-id'] || null;
 
   if (!senderEmail) {
     return res.status(400).json({ success: false, error: 'Sender email is required' });
@@ -35,7 +36,7 @@ router.post('/start', async (req, res) => {
   const prefilledCheckout = `${CHECKOUT_URL}?checkout[email]=${encodeURIComponent(cleanSender)}`;
 
   // 1. Check Plan Status & Real-time Daily Usage for this Sender Account
-  const usage = await getDailyUsage(cleanSender);
+  const usage = await getDailyUsage(cleanSender, profileId);
 
   // 2. Enforce Free Plan Limits (5 emails/day, no PDF/file attachments)
   if (!usage.isPro) {
@@ -80,7 +81,8 @@ router.post('/start', async (req, res) => {
       recipients,
       subjectTemplate,
       bodyTemplate,
-      attachments: Array.isArray(attachments) ? attachments : []
+      attachments: Array.isArray(attachments) ? attachments : [],
+      profileId
     });
 
     res.json({

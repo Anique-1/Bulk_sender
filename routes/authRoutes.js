@@ -10,6 +10,7 @@ const { verifySmtpCredentials } = require('../services/mailerService');
  */
 router.post('/manual', async (req, res) => {
   const { email, name, appPassword, host, port } = req.body;
+  const profileId = req.headers['x-profile-id'] || null;
 
   if (!email || !email.includes('@')) {
     return res.status(400).json({ success: false, error: 'Valid email address is required' });
@@ -28,13 +29,14 @@ router.post('/manual', async (req, res) => {
       pass: appPassword
     });
 
-    // 2. Save account in local store
-    const account = saveManualAccount({
+    // 2. Save account in local store, scoped to this Chrome profile
+    const account = await saveManualAccount({
       email,
       name,
       appPassword,
       host,
-      port
+      port,
+      profileId
     });
 
     res.json({
@@ -60,14 +62,17 @@ router.post('/manual', async (req, res) => {
 /**
  * GET /api/auth/google/url
  * Returns the Google OAuth authorization URL
+ * Embeds the profileId in the OAuth state param so the callback can scope the account.
  */
 router.get('/google/url', (req, res) => {
+  const profileId = req.headers['x-profile-id'] || null;
   try {
     const oauth2Client = getOAuth2Client();
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline', // Required to get refresh_token
       prompt: 'consent',     // Forces consent screen to ensure refresh token is issued
-      scope: SCOPES
+      scope: SCOPES,
+      state: profileId ? Buffer.from(JSON.stringify({ profileId })).toString('base64') : undefined
     });
 
     res.json({ success: true, authUrl });
@@ -82,7 +87,18 @@ router.get('/google/url', (req, res) => {
  * Handles OAuth2 callback from Google, retrieves tokens & profile
  */
 router.get('/google/callback', async (req, res) => {
-  const { code, error } = req.query;
+  const { code, error, state: stateParam } = req.query;
+
+  // Decode profileId from state param (set during /google/url)
+  let profileId = null;
+  if (stateParam) {
+    try {
+      const decoded = JSON.parse(Buffer.from(stateParam, 'base64').toString());
+      profileId = decoded.profileId || null;
+    } catch (e) {
+      console.warn('[OAuth Callback] Could not decode state param:', e.message);
+    }
+  }
 
   if (error) {
     return res.status(400).send(`
@@ -118,8 +134,9 @@ router.get('/google/callback', async (req, res) => {
     });
     const profile = userRes.data;
 
-    // Save account & tokens
-    saveAccount(profile, tokens);
+    // Save account & tokens scoped to the profileId
+    await saveAccount(profile, tokens, profileId);
+    console.log(`[OAuth] Account saved: ${profile.email} (profileId: ${profileId || 'global'})`);
 
     res.send(`
       <!DOCTYPE html>
@@ -214,11 +231,12 @@ router.get('/google/callback', async (req, res) => {
 
 /**
  * GET /api/auth/accounts
- * Returns all connected sender accounts
+ * Returns ONLY the accounts belonging to this Chrome profile (x-profile-id header)
  */
 router.get('/accounts', (req, res) => {
+  const profileId = req.headers['x-profile-id'] || null;
   try {
-    const accounts = listAccounts();
+    const accounts = listAccounts(profileId);
     res.json({ success: true, accounts });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -227,11 +245,12 @@ router.get('/accounts', (req, res) => {
 
 /**
  * DELETE /api/auth/accounts/:email
- * Disconnect an account
+ * Disconnect an account (scoped to this Chrome profile)
  */
-router.delete('/accounts/:email', (req, res) => {
+router.delete('/accounts/:email', async (req, res) => {
+  const profileId = req.headers['x-profile-id'] || null;
   try {
-    const removed = deleteAccount(req.params.email);
+    const removed = await deleteAccount(req.params.email, profileId);
     res.json({ success: true, removed });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

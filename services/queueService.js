@@ -32,7 +32,7 @@ class CampaignQueueService extends EventEmitter {
   /**
    * Create and start a new bulk sending campaign
    */
-  createCampaign({ senderEmail, recipients, subjectTemplate, bodyTemplate, attachments = [] }) {
+  createCampaign({ senderEmail, recipients, subjectTemplate, bodyTemplate, attachments = [], profileId }) {
     const jobId = uuidv4();
     const FIXED_DELAY_MS = 3000; // Fixed 3 second delay between emails
     
@@ -62,6 +62,7 @@ class CampaignQueueService extends EventEmitter {
       subjectTemplate,
       bodyTemplate,
       attachments: Array.isArray(attachments) ? attachments : [],
+      profileId: profileId || null,
       delayMs: FIXED_DELAY_MS,
       currentIndex: 0,
       logs: [],
@@ -129,7 +130,7 @@ class CampaignQueueService extends EventEmitter {
 
         // Check real-time daily quota limit
         try {
-          const usage = await getDailyUsage(job.senderEmail);
+          const usage = await getDailyUsage(job.senderEmail, job.profileId);
           console.log(`[QueueService] Quota check: sentToday=${usage.sentToday}, limit=${usage.limit}, isPro=${usage.isPro}`);
           if (!usage.isPro && usage.sentToday >= usage.limit) {
             logEntry.status = 'failed';
@@ -162,7 +163,8 @@ class CampaignQueueService extends EventEmitter {
             subject: personalizedSubject,
             htmlBody: personalizedBody,
             textBody: personalizedBody.replace(/<[^>]*>?/gm, ''),
-            attachments: job.attachments
+            attachments: job.attachments,
+            profileId: job.profileId
           });
 
           job.sent++;
@@ -171,7 +173,7 @@ class CampaignQueueService extends EventEmitter {
           console.log(`[QueueService] ✓ Sent to ${recipient.email}. Total sent: ${job.sent}`);
 
           // Increment daily sent quota
-          incrementDailySent(job.senderEmail).catch(e => console.warn('[QueueService] incrementDailySent warn:', e.message));
+          incrementDailySent(job.senderEmail, job.profileId).catch(e => console.warn('[QueueService] incrementDailySent warn:', e.message));
 
           // Persist progress to MongoDB immediately (survives server restarts)
           if (getIsConnected()) {

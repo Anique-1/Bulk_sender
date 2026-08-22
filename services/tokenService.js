@@ -18,12 +18,27 @@ try {
   console.warn('Directory check:', e.message);
 }
 
-function loadAccounts() {
-  if (!fs.existsSync(ACCOUNTS_FILE)) {
+/**
+ * Returns the path to the accounts file for the given profileId.
+ * Each Chrome profile gets its own isolated file: accounts_<profileId>.json
+ * Falls back to the shared accounts.json if no profileId is given.
+ */
+function accountsFilePath(profileId) {
+  if (profileId && typeof profileId === 'string' && profileId.length > 4) {
+    // Sanitize profileId to prevent path traversal
+    const safe = profileId.replace(/[^a-zA-Z0-9_-]/g, '');
+    return path.join(DATA_DIR, `accounts_${safe}.json`);
+  }
+  return ACCOUNTS_FILE;
+}
+
+function loadAccounts(profileId) {
+  const file = accountsFilePath(profileId);
+  if (!fs.existsSync(file)) {
     return [];
   }
   try {
-    const raw = fs.readFileSync(ACCOUNTS_FILE, 'utf8');
+    const raw = fs.readFileSync(file, 'utf8');
     return JSON.parse(raw);
   } catch (err) {
     console.error('Error loading accounts:', err);
@@ -31,9 +46,10 @@ function loadAccounts() {
   }
 }
 
-function saveAccounts(accounts) {
+function saveAccounts(accounts, profileId) {
+  const file = accountsFilePath(profileId);
   try {
-    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf8');
+    fs.writeFileSync(file, JSON.stringify(accounts, null, 2), 'utf8');
   } catch (err) {
     console.error('Error saving accounts:', err);
   }
@@ -42,8 +58,8 @@ function saveAccounts(accounts) {
 /**
  * Check if user is allowed to add another account based on plan limits
  */
-async function checkAccountLimit(email) {
-  const accounts = loadAccounts();
+async function checkAccountLimit(email, profileId) {
+  const accounts = loadAccounts(profileId);
   const existing = accounts.find(a => a.email.toLowerCase() === email.toLowerCase());
   if (existing) {
     return { allowed: true, count: accounts.length };
@@ -51,7 +67,7 @@ async function checkAccountLimit(email) {
 
   if (getIsConnected()) {
     try {
-      const dbAccounts = await Account.find({}).lean();
+      const dbAccounts = await Account.find({ profileId: profileId || null }).lean();
       if (dbAccounts.length >= 1) {
         const hasMultiPlan = dbAccounts.some(a => a.subscription && a.subscription.accountLimit > 1);
         if (!hasMultiPlan && dbAccounts.length >= 1) {
@@ -74,15 +90,15 @@ async function checkAccountLimit(email) {
 /**
  * Save or update OAuth Google account tokens (MongoDB + JSON fallback)
  */
-async function saveAccount(profile, tokens) {
-  const accounts = loadAccounts();
+async function saveAccount(profile, tokens, profileId) {
+  const accounts = loadAccounts(profileId);
   const cleanEmail = profile.email.toLowerCase().trim();
   const existingIdx = accounts.findIndex(a => a.email.toLowerCase() === cleanEmail);
 
   let existingAccount = null;
   if (getIsConnected()) {
     try {
-      existingAccount = await Account.findOne({ email: cleanEmail });
+      existingAccount = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
     } catch (e) {}
   }
 
@@ -100,6 +116,7 @@ async function saveAccount(profile, tokens) {
     email: cleanEmail,
     name: profile.name || profile.email.split('@')[0],
     picture: profile.picture || '',
+    profileId: profileId || null,
     tokens: {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token || (existingIdx !== -1 && accounts[existingIdx].tokens ? accounts[existingIdx].tokens.refresh_token : null),
@@ -126,19 +143,20 @@ async function saveAccount(profile, tokens) {
     accounts.push(accountData);
   }
 
-  saveAccounts(accounts);
+  saveAccounts(accounts, profileId);
 
   // Sync to MongoDB
   if (getIsConnected()) {
     try {
       await Account.findOneAndUpdate(
-        { email: accountData.email },
+        { email: accountData.email, profileId: profileId || null },
         { 
           $set: {
             id: accountData.id,
             type: accountData.type,
             name: accountData.name,
             picture: accountData.picture,
+            profileId: accountData.profileId,
             tokens: accountData.tokens,
             connectedAt: accountData.connectedAt
           },
@@ -149,7 +167,7 @@ async function saveAccount(profile, tokens) {
         },
         { upsert: true, new: true }
       );
-      console.log(`[MongoDB] 🟢 Account synced: ${accountData.email}`);
+      console.log(`[MongoDB] 🟢 Account synced: ${accountData.email} (profile: ${profileId || 'global'})`);
     } catch (dbErr) {
       console.warn('[MongoDB] Sync account error:', dbErr.message);
     }
@@ -161,8 +179,8 @@ async function saveAccount(profile, tokens) {
 /**
  * Save manual business Gmail / Custom SMTP (using Password / App Password)
  */
-async function saveManualAccount({ email, name, appPassword, host, port, secure }) {
-  const accounts = loadAccounts();
+async function saveManualAccount({ email, name, appPassword, host, port, secure, profileId }) {
+  const accounts = loadAccounts(profileId);
   const cleanEmail = email.toLowerCase().trim();
   const cleanPass = appPassword ? appPassword.replace(/\s+/g, '').trim() : '';
   const existingIdx = accounts.findIndex(a => a.email.toLowerCase() === cleanEmail);
@@ -170,7 +188,7 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure 
   let existingAccount = null;
   if (getIsConnected()) {
     try {
-      existingAccount = await Account.findOne({ email: cleanEmail });
+      existingAccount = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
     } catch (e) {}
   }
 
@@ -188,6 +206,7 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure 
     email: cleanEmail,
     name: name ? name.trim() : cleanEmail.split('@')[0],
     picture: '',
+    profileId: profileId || null,
     smtp: {
       host: host ? host.trim() : 'smtp.gmail.com',
       port: port ? parseInt(port, 10) : 465,
@@ -214,18 +233,19 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure 
     accounts.push(accountData);
   }
 
-  saveAccounts(accounts);
+  saveAccounts(accounts, profileId);
 
   // Sync to MongoDB
   if (getIsConnected()) {
     try {
       await Account.findOneAndUpdate(
-        { email: accountData.email },
+        { email: accountData.email, profileId: profileId || null },
         { 
           $set: {
             id: accountData.id,
             type: accountData.type,
             name: accountData.name,
+            profileId: accountData.profileId,
             smtp: accountData.smtp,
             connectedAt: accountData.connectedAt
           },
@@ -236,7 +256,7 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure 
         },
         { upsert: true, new: true }
       );
-      console.log(`[MongoDB] 🟢 Manual Account synced: ${accountData.email}`);
+      console.log(`[MongoDB] 🟢 Manual Account synced: ${accountData.email} (profile: ${profileId || 'global'})`);
     } catch (dbErr) {
       console.warn('[MongoDB] Sync manual account error:', dbErr.message);
     }
@@ -246,10 +266,10 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure 
 }
 
 /**
- * List all connected accounts
+ * List all connected accounts for a specific profileId
  */
-function listAccounts() {
-  const accounts = loadAccounts();
+function listAccounts(profileId) {
+  const accounts = loadAccounts(profileId);
   return accounts.map(a => ({
     id: a.id,
     type: a.type || (a.smtp ? 'smtp' : 'oauth'),
@@ -262,28 +282,28 @@ function listAccounts() {
 }
 
 /**
- * Get account by email
+ * Get account by email, scoped to profileId
  */
-function getAccount(email) {
+function getAccount(email, profileId) {
   const cleanEmail = (email || '').toLowerCase().trim();
-  const accounts = loadAccounts();
+  const accounts = loadAccounts(profileId);
   return accounts.find(a => a.email.toLowerCase() === cleanEmail);
 }
 
 /**
- * Delete account by email
+ * Delete account by email, scoped to profileId
  */
-async function deleteAccount(email) {
+async function deleteAccount(email, profileId) {
   const cleanEmail = (email || '').toLowerCase().trim();
-  let accounts = loadAccounts();
+  let accounts = loadAccounts(profileId);
   const before = accounts.length;
   accounts = accounts.filter(a => a.email.toLowerCase() !== cleanEmail);
-  saveAccounts(accounts);
+  saveAccounts(accounts, profileId);
 
   if (getIsConnected()) {
     try {
-      await Account.deleteOne({ email: cleanEmail });
-      console.log(`[MongoDB] 🗑️ Deleted account from DB: ${cleanEmail}`);
+      await Account.deleteOne({ email: cleanEmail, profileId: profileId || null });
+      console.log(`[MongoDB] 🗑️ Deleted account from DB: ${cleanEmail} (profile: ${profileId || 'global'})`);
     } catch (e) {
       console.warn('[MongoDB] Delete error:', e.message);
     }
@@ -295,8 +315,8 @@ async function deleteAccount(email) {
 /**
  * Get authorized OAuth2Client for a specific sender email (OAuth only)
  */
-async function getAuthenticatedClient(email) {
-  const account = getAccount(email);
+async function getAuthenticatedClient(email, profileId) {
+  const account = getAccount(email, profileId);
 
   if (!account) {
     throw new Error(`Account ${email} is not connected.`);
@@ -325,13 +345,13 @@ async function getAuthenticatedClient(email) {
 /**
  * Get daily quota usage for an email
  */
-async function getDailyUsage(email) {
+async function getDailyUsage(email, profileId) {
   const cleanEmail = (email || '').toLowerCase().trim();
   const todayStr = new Date().toISOString().split('T')[0];
 
   if (getIsConnected()) {
     try {
-      const dbAcc = await Account.findOne({ email: cleanEmail });
+      const dbAcc = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
       if (dbAcc) {
         const isPro = dbAcc.subscription && (dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active';
         const sentToday = (dbAcc.usage && dbAcc.usage.lastSentDate === todayStr) ? (dbAcc.usage.dailySentCount || 0) : 0;
@@ -348,7 +368,7 @@ async function getDailyUsage(email) {
     } catch (e) {}
   }
 
-  const localAcc = getAccount(cleanEmail);
+  const localAcc = getAccount(cleanEmail, profileId);
   const isPro = localAcc && localAcc.subscription && localAcc.subscription.plan === 'starter_1_99' && localAcc.subscription.status === 'active';
   const sentToday = (localAcc && localAcc.usage && localAcc.usage.lastSentDate === todayStr) ? (localAcc.usage.dailySentCount || 0) : 0;
   const limit = isPro ? 2000 : 5;
@@ -365,12 +385,12 @@ async function getDailyUsage(email) {
 /**
  * Increment daily sent count in both MongoDB and local accounts.json
  */
-async function incrementDailySent(email) {
+async function incrementDailySent(email, profileId) {
   const cleanEmail = (email || '').toLowerCase().trim();
   const todayStr = new Date().toISOString().split('T')[0];
 
   // 1. Update local accounts.json
-  const accounts = loadAccounts();
+  const accounts = loadAccounts(profileId);
   const acc = accounts.find(a => a.email.toLowerCase() === cleanEmail);
   if (acc) {
     if (!acc.usage || acc.usage.lastSentDate !== todayStr) {
@@ -383,13 +403,13 @@ async function incrementDailySent(email) {
     }
     acc.usage.dailySentCount = (acc.usage.dailySentCount || 0) + 1;
     acc.usage.totalSentAllTime = (acc.usage.totalSentAllTime || 0) + 1;
-    saveAccounts(accounts);
+    saveAccounts(accounts, profileId);
   }
 
   // 2. Update MongoDB
   if (getIsConnected()) {
     try {
-      const dbAcc = await Account.findOne({ email: cleanEmail });
+      const dbAcc = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
       if (dbAcc) {
         if (!dbAcc.usage || dbAcc.usage.lastSentDate !== todayStr) {
           dbAcc.usage = {

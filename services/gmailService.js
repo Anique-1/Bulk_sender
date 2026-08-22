@@ -129,8 +129,8 @@ async function createRawEmail({ from, to, subject, htmlBody, textBody, attachmen
 /**
  * Unified dispatch function: automatically supports BOTH OAuth accounts & Manual App Password accounts
  */
-async function sendGmailMessage({ fromEmail, toEmail, subject, htmlBody, textBody, attachments = [] }) {
-  const account = getAccount(fromEmail);
+async function sendGmailMessage({ fromEmail, toEmail, subject, htmlBody, textBody, attachments = [], profileId }) {
+  const account = getAccount(fromEmail, profileId);
 
   if (!account) {
     throw new Error(`Sender account ${fromEmail} is not configured.`);
@@ -154,7 +154,7 @@ async function sendGmailMessage({ fromEmail, toEmail, subject, htmlBody, textBod
   }
 
   // Path B: Google OAuth 2.0 (Gmail REST API)
-  const auth = await getAuthenticatedClient(fromEmail);
+  const auth = await getAuthenticatedClient(fromEmail, profileId);
   const rawMime = await createRawEmail({
     from: fromEmail,
     to: toEmail,
