@@ -4,7 +4,7 @@ const queueService = require('../services/queueService');
 const Campaign = require('../models/Campaign');
 const Account = require('../models/Account');
 const { getIsConnected } = require('../config/db');
-const { getAccount, getDailyUsage } = require('../services/tokenService');
+const { getAccount, getDailyUsage, listAccounts } = require('../services/tokenService');
 
 const CHECKOUT_URL = process.env.LEMONSQUEEZY_CHECKOUT_URL || 'https://replyeo.lemonsqueezy.com/checkout/buy/f0ec5261-ef37-41a3-89ad-7acabe2d99ce';
 
@@ -100,14 +100,29 @@ router.post('/start', async (req, res) => {
 
 /**
  * GET /api/campaign/history
- * Get past campaign history from MongoDB
+ * Get past campaign history from MongoDB (filtered by connected sender email)
  */
 router.get('/history', async (req, res) => {
+  const profileId = req.headers['x-profile-id'] || null;
+  const senderEmail = (req.query.senderEmail || req.query.email || '').toLowerCase().trim();
+
   if (getIsConnected()) {
     try {
-      const campaigns = await Campaign.find({})
+      const query = {};
+      if (senderEmail) {
+        query.senderEmail = senderEmail;
+      } else if (profileId) {
+        const accounts = listAccounts(profileId);
+        if (accounts.length > 0) {
+          query.senderEmail = { $in: accounts.map(a => a.email.toLowerCase()) };
+        } else {
+          return res.json({ success: true, campaigns: [] });
+        }
+      }
+
+      const campaigns = await Campaign.find(query)
         .sort({ createdAt: -1 })
-        .limit(30)
+        .limit(50)
         .select('-logs')
         .lean();
       return res.json({ success: true, campaigns });
