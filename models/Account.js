@@ -6,6 +6,7 @@ const AccountSchema = new mongoose.Schema({
   name: { type: String, default: '' },
   picture: { type: String, default: '' },
   profileId: { type: String, default: null },
+  isConnected: { type: Boolean, default: true },
   type: { type: String, enum: ['oauth', 'smtp'], default: 'oauth' },
   
   // OAuth Tokens

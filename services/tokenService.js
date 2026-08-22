@@ -67,7 +67,7 @@ async function checkAccountLimit(email, profileId) {
 
   if (getIsConnected()) {
     try {
-      const dbAccounts = await Account.find({ profileId: profileId || null }).lean();
+      const dbAccounts = await Account.find({ profileId: profileId || null, isConnected: true }).lean();
       if (dbAccounts.length >= 1) {
         const hasMultiPlan = dbAccounts.some(a => a.subscription && a.subscription.accountLimit > 1);
         if (!hasMultiPlan && dbAccounts.length >= 1) {
@@ -132,7 +132,8 @@ async function saveAccount(profile, tokens, profileId) {
     usage: {
       dailySentCount: (existingAccount && existingAccount.usage) ? existingAccount.usage.dailySentCount : 0,
       lastSentDate: new Date().toISOString().split('T')[0],
-      dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25
+      dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25,
+      totalSentAllTime: (existingAccount && existingAccount.usage) ? (existingAccount.usage.totalSentAllTime || 0) : 0
     },
     connectedAt: new Date().toISOString()
   };
@@ -157,6 +158,7 @@ async function saveAccount(profile, tokens, profileId) {
             name: accountData.name,
             picture: accountData.picture,
             profileId: accountData.profileId,
+            isConnected: true,
             tokens: accountData.tokens,
             connectedAt: accountData.connectedAt
           },
@@ -222,7 +224,8 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure,
     usage: {
       dailySentCount: (existingAccount && existingAccount.usage) ? existingAccount.usage.dailySentCount : 0,
       lastSentDate: new Date().toISOString().split('T')[0],
-      dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25
+      dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25,
+      totalSentAllTime: (existingAccount && existingAccount.usage) ? (existingAccount.usage.totalSentAllTime || 0) : 0
     },
     connectedAt: new Date().toISOString()
   };
@@ -246,6 +249,7 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure,
             type: accountData.type,
             name: accountData.name,
             profileId: accountData.profileId,
+            isConnected: true,
             smtp: accountData.smtp,
             connectedAt: accountData.connectedAt
           },
@@ -302,8 +306,11 @@ async function deleteAccount(email, profileId) {
 
   if (getIsConnected()) {
     try {
-      await Account.deleteOne({ email: cleanEmail, profileId: profileId || null });
-      console.log(`[MongoDB] 🗑️ Deleted account from DB: ${cleanEmail} (profile: ${profileId || 'global'})`);
+      await Account.updateOne(
+        { email: cleanEmail, profileId: profileId || null },
+        { $set: { isConnected: false, tokens: {} } }
+      );
+      console.log(`[MongoDB] 🗑️ Disconnected account in DB: ${cleanEmail} (profile: ${profileId || 'global'})`);
     } catch (e) {
       console.warn('[MongoDB] Delete error:', e.message);
     }
