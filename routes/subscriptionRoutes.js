@@ -75,7 +75,8 @@ router.get('/plans', (req, res) => {
  */
 router.get('/status/:email', async (req, res) => {
   const cleanEmail = req.params.email.toLowerCase().trim();
-  const usage = await getDailyUsage(cleanEmail);
+  const profileId = req.headers['x-profile-id'] || null;
+  const usage = await getDailyUsage(cleanEmail, profileId);
 
   res.json({
     success: true,
