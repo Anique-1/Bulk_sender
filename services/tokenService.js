@@ -132,7 +132,7 @@ async function saveAccount(profile, tokens, profileId) {
     usage: {
       dailySentCount: (existingAccount && existingAccount.usage) ? existingAccount.usage.dailySentCount : 0,
       lastSentDate: new Date().toISOString().split('T')[0],
-      dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 5
+      dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25
     },
     connectedAt: new Date().toISOString()
   };
@@ -222,7 +222,7 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure,
     usage: {
       dailySentCount: (existingAccount && existingAccount.usage) ? existingAccount.usage.dailySentCount : 0,
       lastSentDate: new Date().toISOString().split('T')[0],
-      dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 5
+      dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25
     },
     connectedAt: new Date().toISOString()
   };
@@ -355,12 +355,14 @@ async function getDailyUsage(email, profileId) {
       if (dbAcc) {
         const isPro = dbAcc.subscription && (dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active';
         const sentToday = (dbAcc.usage && dbAcc.usage.lastSentDate === todayStr) ? (dbAcc.usage.dailySentCount || 0) : 0;
-        const limit = isPro ? 2000 : 5;
+        const totalSent = dbAcc.usage ? (dbAcc.usage.totalSentAllTime || 0) : 0;
+        const limit = isPro ? 2000 : 25;
+        const sent = isPro ? sentToday : totalSent;
         return {
           isPro,
-          sentToday,
+          sentToday: sent,
           limit,
-          remaining: Math.max(0, limit - sentToday),
+          remaining: Math.max(0, limit - sent),
           plan: dbAcc.subscription ? dbAcc.subscription.plan : 'free',
           status: dbAcc.subscription ? dbAcc.subscription.status : 'trial',
           expiryDate: dbAcc.subscription ? (dbAcc.subscription.currentPeriodEnd || dbAcc.subscription.trialEndsAt) : null
@@ -372,12 +374,14 @@ async function getDailyUsage(email, profileId) {
   const localAcc = getAccount(cleanEmail, profileId);
   const isPro = localAcc && localAcc.subscription && localAcc.subscription.plan === 'starter_1_99' && localAcc.subscription.status === 'active';
   const sentToday = (localAcc && localAcc.usage && localAcc.usage.lastSentDate === todayStr) ? (localAcc.usage.dailySentCount || 0) : 0;
-  const limit = isPro ? 2000 : 5;
+  const totalSent = localAcc && localAcc.usage ? (localAcc.usage.totalSentAllTime || 0) : 0;
+  const limit = isPro ? 2000 : 25;
+  const sent = isPro ? sentToday : totalSent;
   return {
     isPro,
-    sentToday,
+    sentToday: sent,
     limit,
-    remaining: Math.max(0, limit - sentToday),
+    remaining: Math.max(0, limit - sent),
     plan: localAcc && localAcc.subscription ? localAcc.subscription.plan : 'free',
     status: localAcc && localAcc.subscription ? localAcc.subscription.status : 'trial',
     expiryDate: localAcc && localAcc.subscription ? (localAcc.subscription.currentPeriodEnd || localAcc.subscription.trialEndsAt) : null
@@ -399,7 +403,7 @@ async function incrementDailySent(email, profileId) {
       acc.usage = {
         dailySentCount: 0,
         lastSentDate: todayStr,
-        dailyLimit: acc.subscription && acc.subscription.plan === 'starter_1_99' ? 2000 : 5,
+        dailyLimit: acc.subscription && acc.subscription.plan === 'starter_1_99' ? 2000 : 25,
         totalSentAllTime: (acc.usage && acc.usage.totalSentAllTime) || 0
       };
     }
@@ -417,7 +421,7 @@ async function incrementDailySent(email, profileId) {
           dbAcc.usage = {
             dailySentCount: 1,
             lastSentDate: todayStr,
-            dailyLimit: dbAcc.subscription && dbAcc.subscription.plan === 'starter_1_99' ? 2000 : 5,
+            dailyLimit: dbAcc.subscription && dbAcc.subscription.plan === 'starter_1_99' ? 2000 : 25,
             totalSentAllTime: (dbAcc.usage ? dbAcc.usage.totalSentAllTime : 0) + 1
           };
         } else {
