@@ -14,8 +14,9 @@ let localPromoState = {
     code: 'FIRST100',
     maxUses: 100,
     usedBy: new Set(),
-    bonusPercent: 10,
-    totalQuota: 2200
+    discountPercent: 10,
+    discountedPrice: 2.69,
+    totalQuota: 2000
   }
 };
 
@@ -51,12 +52,12 @@ router.get('/plans', (req, res) => {
         accountLimit: 1,
         limit: 2000,
         badge: 'POPULAR',
-        promoBadge: '🎁 Use FIRST100 for +10% Extra (2,200 Emails)',
+        promoBadge: '🎁 Use FIRST100 for 10% OFF ($2.69)',
         checkoutUrl: DEFAULT_CHECKOUT_URL,
         features: [
           '✅ 1 Connected Gmail / Workspace Account',
           '✅ 2,000 Emails Quota (Non-monthly / Send anytime)',
-          '✅ Launch Promo: +10% Extra (2,200 Quota) for first 100 users',
+          '✅ Launch Promo: 10% OFF at Checkout ($2.69 for 2,000 emails) with code FIRST100',
           '✅ Cloudinary PDF & Image Attachments',
           '✅ Smart Anti-Spam Interval Throttling',
           '✅ CSV Mail Merge & Live SSE Dispatch',
@@ -108,11 +109,12 @@ router.get('/promo-info/:code', async (req, res) => {
       if (!promo && cleanCode === 'FIRST100') {
         promo = await PromoCode.create({
           code: 'FIRST100',
-          description: '10% Extra Emails (2,200 Total) for First 100 Users',
+          description: '10% OFF Checkout Promo ($2.69 for 2,000 Emails) for First 100 Users',
           maxUses: 100,
           usedCount: 0,
-          bonusPercent: 10,
-          totalQuota: 2200,
+          discountPercent: 10,
+          discountedPrice: 2.69,
+          totalQuota: 2000,
           usedBy: []
         });
       }
@@ -124,8 +126,9 @@ router.get('/promo-info/:code', async (req, res) => {
           maxUses: promo.maxUses,
           usedCount: promo.usedCount,
           remainingSpots: Math.max(0, promo.maxUses - promo.usedCount),
-          bonusPercent: promo.bonusPercent,
-          totalQuota: promo.totalQuota,
+          discountPercent: promo.discountPercent || 10,
+          discountedPrice: promo.discountedPrice || 2.69,
+          totalQuota: promo.totalQuota || 2000,
           isActive: promo.isActive && promo.usedCount < promo.maxUses
         });
       }
@@ -144,7 +147,8 @@ router.get('/promo-info/:code', async (req, res) => {
       maxUses: promo.maxUses,
       usedCount: used,
       remainingSpots: Math.max(0, promo.maxUses - used),
-      bonusPercent: promo.bonusPercent,
+      discountPercent: promo.discountPercent,
+      discountedPrice: promo.discountedPrice,
       totalQuota: promo.totalQuota,
       isActive: used < promo.maxUses
     });
@@ -155,7 +159,7 @@ router.get('/promo-info/:code', async (req, res) => {
 
 /**
  * POST /api/subscription/apply-promo
- * Applies promo code for the first 100 users with +10% extra emails (2,200 quota)
+ * Applies promo code for the first 100 users for 10% OFF checkout & 2,000 email quota
  */
 router.post('/apply-promo', async (req, res) => {
   const { email, promoCode } = req.body;
@@ -167,10 +171,10 @@ router.post('/apply-promo', async (req, res) => {
   const cleanCode = promoCode.toUpperCase().trim();
 
   if (cleanCode !== 'FIRST100' && !cleanCode.startsWith('PROMO')) {
-    return res.status(400).json({ success: false, error: 'Invalid promo code. Use FIRST100 to get +10% extra emails!' });
+    return res.status(400).json({ success: false, error: 'Invalid promo code. Use FIRST100 to get 10% OFF ($2.69)!' });
   }
 
-  let totalQuota = 2200; // 2,000 + 10% = 2,200 emails
+  let totalQuota = 2000;
   let remainingSpots = 100;
 
   if (getIsConnected()) {
@@ -179,11 +183,12 @@ router.post('/apply-promo', async (req, res) => {
       if (!promo && cleanCode === 'FIRST100') {
         promo = await PromoCode.create({
           code: 'FIRST100',
-          description: '10% Extra Emails (2,200 Total) for First 100 Users',
+          description: '10% OFF Checkout Promo ($2.69 for 2,000 Emails) for First 100 Users',
           maxUses: 100,
           usedCount: 0,
-          bonusPercent: 10,
-          totalQuota: 2200,
+          discountPercent: 10,
+          discountedPrice: 2.69,
+          totalQuota: 2000,
           usedBy: []
         });
       }
@@ -205,7 +210,7 @@ router.post('/apply-promo', async (req, res) => {
       promo.usedBy.push(cleanEmail);
       await promo.save();
 
-      totalQuota = promo.totalQuota || 2200;
+      totalQuota = promo.totalQuota || 2000;
       remainingSpots = Math.max(0, promo.maxUses - promo.usedCount);
 
       // Upgrade Account in DB
@@ -233,7 +238,7 @@ router.post('/apply-promo', async (req, res) => {
 
       return res.json({
         success: true,
-        message: `🎉 Promo ${cleanCode} applied! You received +10% extra emails (${totalQuota.toLocaleString()} Quota)! (${remainingSpots} spots remaining)`,
+        message: `🎉 Promo ${cleanCode} applied! You get 10% OFF ($2.69) for your 2,000 emails package! (${remainingSpots} spots remaining)`,
         plan: account.subscription.plan,
         status: account.subscription.status,
         limit: totalQuota,
@@ -280,7 +285,7 @@ router.post('/apply-promo', async (req, res) => {
 
   res.json({
     success: true,
-    message: `🎉 Promo ${cleanCode} applied! You received +10% extra emails (${totalQuota.toLocaleString()} Quota)! (${remainingSpots} spots remaining)`,
+    message: `🎉 Promo ${cleanCode} applied! You get 10% OFF ($2.69) for your 2,000 emails package! (${remainingSpots} spots remaining)`,
     plan: 'starter_2_99',
     status: 'active',
     limit: totalQuota,
