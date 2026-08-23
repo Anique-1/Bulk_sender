@@ -62,7 +62,7 @@ app.get('/', (req, res) => {
     },
     subscription: {
       lemonSqueezyReady: Boolean(process.env.LEMONSQUEEZY_CHECKOUT_URL || process.env.LEMONSQUEEZY_WEBHOOK_SECRET),
-      defaultPlan: 'Starter Pro ($1.99/mo)'
+      defaultPlan: 'Starter Pro ($2.99 / 2,000 Emails)'
     },
     endpoints: {
       authUrl: '/api/auth/google/url',

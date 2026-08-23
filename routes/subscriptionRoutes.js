@@ -3,9 +3,21 @@ const router = express.Router();
 const crypto = require('crypto');
 const Account = require('../models/Account');
 const LicenseKey = require('../models/LicenseKey');
+const PromoCode = require('../models/PromoCode');
 const { getIsConnected } = require('../config/db');
 const { getDailyUsage } = require('../services/tokenService');
 const DEFAULT_CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
+
+// In-memory fallback for promo code tracking
+let localPromoState = {
+  FIRST100: {
+    code: 'FIRST100',
+    maxUses: 100,
+    usedBy: new Set(),
+    bonusPercent: 10,
+    totalQuota: 2200
+  }
+};
 
 /**
  * GET /api/subscription/plans
@@ -20,48 +32,35 @@ router.get('/plans', (req, res) => {
         name: 'Free Trial',
         price: 0,
         currency: 'USD',
-        billing: 'Free Forever',
+        billing: '25 Emails Free',
         accountLimit: 1,
-        dailyLimit: 5,
+        limit: 25,
         features: [
           'Connect 1 Gmail Account',
-          '5 emails per day',
+          '25 Total Lifetime Test Emails',
           'Basic Dynamic Tags ({{name}}, {{email}})',
-          'Upgrade to Pro for PDF attachments & 2,000/day'
+          'Upgrade to Pro for PDF attachments & 2,000 emails'
         ]
       },
       {
-        id: 'starter_1_99',
-        name: 'Starter Pro (1 Account)',
-        price: 1.99,
+        id: 'starter_2_99',
+        name: 'Starter Pro (2,000 Emails)',
+        price: 2.99,
         currency: 'USD',
-        billing: 'Monthly ($1.99/mo)',
+        billing: '2,000 Emails Package ($2.99)',
         accountLimit: 1,
-        dailyLimit: 2000,
+        limit: 2000,
         badge: 'POPULAR',
+        promoBadge: '🎁 Use FIRST100 for +10% Extra (2,200 Emails)',
         checkoutUrl: DEFAULT_CHECKOUT_URL,
         features: [
           '✅ 1 Connected Gmail / Workspace Account',
-          '✅ Full 500 – 2,000 Emails / Day Quota',
+          '✅ 2,000 Emails Quota (Non-monthly / Send anytime)',
+          '✅ Launch Promo: +10% Extra (2,200 Quota) for first 100 users',
           '✅ Cloudinary PDF & Image Attachments',
           '✅ Smart Anti-Spam Interval Throttling',
           '✅ CSV Mail Merge & Live SSE Dispatch',
           '✅ Real-time Open & Delivery Logging'
-        ]
-      },
-      {
-        id: 'pro_multi',
-        name: 'Agency Multi-Account',
-        price: 7.99,
-        currency: 'USD',
-        billing: 'Monthly ($7.99/mo)',
-        accountLimit: 5,
-        dailyLimit: 10000,
-        features: [
-          '✅ Up to 5 Business Gmail Accounts',
-          '✅ Account Rotation & Load Balancing',
-          '✅ Unlimited Cloudinary PDF Catalogs',
-          '✅ Priority Email Sending Queue'
         ]
       }
     ]
@@ -70,7 +69,7 @@ router.get('/plans', (req, res) => {
 
 /**
  * GET /api/subscription/status/:email
- * Checks subscription status and daily quota for an account
+ * Checks subscription status and quota for an account
  */
 router.get('/status/:email', async (req, res) => {
   const cleanEmail = req.params.email.toLowerCase().trim();
@@ -83,7 +82,9 @@ router.get('/status/:email', async (req, res) => {
     plan: usage.plan,
     status: usage.status,
     isPro: usage.isPro,
+    isLimitEnded: usage.isLimitEnded || usage.remaining <= 0,
     sentToday: usage.sentToday,
+    sent: usage.sent,
     limit: usage.limit,
     remaining: usage.remaining,
     accountLimit: 1,
@@ -95,8 +96,202 @@ router.get('/status/:email', async (req, res) => {
 });
 
 /**
+ * GET /api/subscription/promo-info/:code
+ * Checks promo code availability and remaining spots for the first 100 users
+ */
+router.get('/promo-info/:code', async (req, res) => {
+  const cleanCode = (req.params.code || '').toUpperCase().trim();
+
+  if (getIsConnected()) {
+    try {
+      let promo = await PromoCode.findOne({ code: cleanCode });
+      if (!promo && cleanCode === 'FIRST100') {
+        promo = await PromoCode.create({
+          code: 'FIRST100',
+          description: '10% Extra Emails (2,200 Total) for First 100 Users',
+          maxUses: 100,
+          usedCount: 0,
+          bonusPercent: 10,
+          totalQuota: 2200,
+          usedBy: []
+        });
+      }
+
+      if (promo) {
+        return res.json({
+          success: true,
+          code: promo.code,
+          maxUses: promo.maxUses,
+          usedCount: promo.usedCount,
+          remainingSpots: Math.max(0, promo.maxUses - promo.usedCount),
+          bonusPercent: promo.bonusPercent,
+          totalQuota: promo.totalQuota,
+          isActive: promo.isActive && promo.usedCount < promo.maxUses
+        });
+      }
+    } catch (e) {
+      console.warn('[Subscription] DB promo check error:', e.message);
+    }
+  }
+
+  // Local Memory Fallback
+  if (cleanCode === 'FIRST100') {
+    const promo = localPromoState.FIRST100;
+    const used = promo.usedBy.size;
+    return res.json({
+      success: true,
+      code: promo.code,
+      maxUses: promo.maxUses,
+      usedCount: used,
+      remainingSpots: Math.max(0, promo.maxUses - used),
+      bonusPercent: promo.bonusPercent,
+      totalQuota: promo.totalQuota,
+      isActive: used < promo.maxUses
+    });
+  }
+
+  res.status(404).json({ success: false, error: 'Promo code not found' });
+});
+
+/**
+ * POST /api/subscription/apply-promo
+ * Applies promo code for the first 100 users with +10% extra emails (2,200 quota)
+ */
+router.post('/apply-promo', async (req, res) => {
+  const { email, promoCode } = req.body;
+  if (!email || !promoCode) {
+    return res.status(400).json({ success: false, error: 'Email and promoCode are required' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+  const cleanCode = promoCode.toUpperCase().trim();
+
+  if (cleanCode !== 'FIRST100' && !cleanCode.startsWith('PROMO')) {
+    return res.status(400).json({ success: false, error: 'Invalid promo code. Use FIRST100 to get +10% extra emails!' });
+  }
+
+  let totalQuota = 2200; // 2,000 + 10% = 2,200 emails
+  let remainingSpots = 100;
+
+  if (getIsConnected()) {
+    try {
+      let promo = await PromoCode.findOne({ code: cleanCode });
+      if (!promo && cleanCode === 'FIRST100') {
+        promo = await PromoCode.create({
+          code: 'FIRST100',
+          description: '10% Extra Emails (2,200 Total) for First 100 Users',
+          maxUses: 100,
+          usedCount: 0,
+          bonusPercent: 10,
+          totalQuota: 2200,
+          usedBy: []
+        });
+      }
+
+      if (!promo || !promo.isActive) {
+        return res.status(400).json({ success: false, error: 'This promo code is no longer active.' });
+      }
+
+      if (promo.usedCount >= promo.maxUses) {
+        return res.status(400).json({ success: false, error: 'Sorry! The first 100 promo spots have all been claimed.' });
+      }
+
+      if (promo.usedBy && promo.usedBy.includes(cleanEmail)) {
+        return res.status(400).json({ success: false, error: 'You have already redeemed this promo code on this account.' });
+      }
+
+      // Record promo redemption
+      promo.usedCount += 1;
+      promo.usedBy.push(cleanEmail);
+      await promo.save();
+
+      totalQuota = promo.totalQuota || 2200;
+      remainingSpots = Math.max(0, promo.maxUses - promo.usedCount);
+
+      // Upgrade Account in DB
+      let account = await Account.findOne({ email: cleanEmail });
+      if (!account) {
+        account = new Account({
+          id: 'acc_' + Date.now(),
+          email: cleanEmail,
+          name: cleanEmail.split('@')[0]
+        });
+      }
+
+      account.subscription.plan = 'starter_2_99';
+      account.subscription.status = 'active';
+      account.subscription.licenseKey = cleanCode;
+      account.subscription.accountLimit = 1;
+      if (!account.usage) {
+        account.usage = { dailySentCount: 0, lastSentDate: new Date().toISOString().split('T')[0], dailyLimit: totalQuota, totalSentAllTime: 0, proSentCount: 0, proLimit: totalQuota };
+      } else {
+        account.usage.proSentCount = 0;
+        account.usage.proLimit = totalQuota;
+        account.usage.dailyLimit = totalQuota;
+      }
+      await account.save();
+
+      return res.json({
+        success: true,
+        message: `🎉 Promo ${cleanCode} applied! You received +10% extra emails (${totalQuota.toLocaleString()} Quota)! (${remainingSpots} spots remaining)`,
+        plan: account.subscription.plan,
+        status: account.subscription.status,
+        limit: totalQuota,
+        remaining: totalQuota,
+        remainingSpots
+      });
+    } catch (err) {
+      console.error('[Subscription] Promo redemption error:', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  // Local JSON fallback
+  const promo = localPromoState.FIRST100;
+  if (promo.usedBy.has(cleanEmail)) {
+    return res.status(400).json({ success: false, error: 'You have already redeemed this promo code on this account.' });
+  }
+  if (promo.usedBy.size >= promo.maxUses) {
+    return res.status(400).json({ success: false, error: 'Sorry! The first 100 promo spots have all been claimed.' });
+  }
+
+  promo.usedBy.add(cleanEmail);
+  remainingSpots = Math.max(0, promo.maxUses - promo.usedBy.size);
+
+  const fs = require('fs');
+  const path = require('path');
+  const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, '../data');
+  const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
+  if (fs.existsSync(ACCOUNTS_FILE)) {
+    try {
+      const raw = fs.readFileSync(ACCOUNTS_FILE, 'utf8');
+      const accounts = JSON.parse(raw);
+      const acc = accounts.find(a => a.email.toLowerCase() === cleanEmail);
+      if (acc) {
+        acc.subscription = { plan: 'starter_2_99', status: 'active', accountLimit: 1, licenseKey: cleanCode };
+        if (!acc.usage) acc.usage = { dailySentCount: 0, lastSentDate: new Date().toISOString().split('T')[0], dailyLimit: totalQuota, totalSentAllTime: 0 };
+        acc.usage.proSentCount = 0;
+        acc.usage.proLimit = totalQuota;
+        acc.usage.dailyLimit = totalQuota;
+        fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf8');
+      }
+    } catch (e) { }
+  }
+
+  res.json({
+    success: true,
+    message: `🎉 Promo ${cleanCode} applied! You received +10% extra emails (${totalQuota.toLocaleString()} Quota)! (${remainingSpots} spots remaining)`,
+    plan: 'starter_2_99',
+    status: 'active',
+    limit: totalQuota,
+    remaining: totalQuota,
+    remainingSpots
+  });
+});
+
+/**
  * POST /api/subscription/activate-license
- * Activates a $1.99 license key or promo code for an account
+ * Activates a $2.99 license key or promo code for an account (2,000 email quota)
  */
 router.post('/activate-license', async (req, res) => {
   const { email, licenseKey } = req.body;
@@ -107,6 +302,11 @@ router.post('/activate-license', async (req, res) => {
 
   const cleanEmail = email.toLowerCase().trim();
   const cleanKey = licenseKey.toUpperCase().trim();
+
+  // If user enters promo code FIRST100 in license key box, redirect to promo flow
+  if (cleanKey === 'FIRST100') {
+    return router.handle({ method: 'POST', url: '/apply-promo', body: { email: cleanEmail, promoCode: cleanKey } }, res);
+  }
 
   if (getIsConnected()) {
     try {
@@ -123,7 +323,7 @@ router.post('/activate-license', async (req, res) => {
       keyDoc.activatedAt = new Date();
       await keyDoc.save();
 
-      // Update Account in DB
+      // Update Account in DB — reset proSentCount to 0 and grant fresh 2,000 quota
       let account = await Account.findOne({ email: cleanEmail });
       if (!account) {
         account = new Account({
@@ -133,17 +333,26 @@ router.post('/activate-license', async (req, res) => {
         });
       }
 
-      account.subscription.plan = 'starter_1_99';
+      account.subscription.plan = 'starter_2_99';
       account.subscription.status = 'active';
       account.subscription.licenseKey = cleanKey;
       account.subscription.accountLimit = 1;
+      if (!account.usage) {
+        account.usage = { dailySentCount: 0, lastSentDate: new Date().toISOString().split('T')[0], dailyLimit: 2000, totalSentAllTime: 0, proSentCount: 0, proLimit: 2000 };
+      } else {
+        account.usage.proSentCount = 0;
+        account.usage.proLimit = 2000;
+        account.usage.dailyLimit = 2000;
+      }
       await account.save();
 
       return res.json({
         success: true,
-        message: '🎉 $1.99 Starter Plan activated successfully!',
+        message: '🎉 $2.99 Starter Plan (2,000 Emails Quota) activated successfully!',
         plan: account.subscription.plan,
         status: account.subscription.status,
+        limit: 2000,
+        remaining: 2000,
         accountLimit: account.subscription.accountLimit
       });
     } catch (err) {
@@ -155,19 +364,21 @@ router.post('/activate-license', async (req, res) => {
   // Local JSON fallback
   res.json({
     success: true,
-    message: '🎉 License activated (Local Mode)!',
-    plan: 'starter_1_99',
+    message: '🎉 License activated (Local Mode) - 2,000 Emails Quota!',
+    plan: 'starter_2_99',
     status: 'active',
+    limit: 2000,
+    remaining: 2000,
     accountLimit: 1
   });
 });
 
 /**
  * POST /api/subscription/simulate-upgrade
- * Quick helper for testing / developer verification
+ * Quick helper for testing / developer verification (resets 2,000 quota)
  */
 router.post('/simulate-upgrade', async (req, res) => {
-  const { email, plan = 'starter_1_99' } = req.body;
+  const { email, plan = 'starter_2_99' } = req.body;
   if (!email) {
     return res.status(400).json({ success: false, error: 'Email is required' });
   }
@@ -182,18 +393,42 @@ router.post('/simulate-upgrade', async (req, res) => {
           $set: {
             'subscription.plan': plan,
             'subscription.status': 'active',
-            'subscription.accountLimit': plan === 'pro_multi' ? 5 : 1
+            'subscription.accountLimit': 1,
+            'usage.proSentCount': 0,
+            'usage.proLimit': 2000,
+            'usage.dailyLimit': 2000
           }
         },
         { upsert: true, returnDocument: 'after' }
       );
-      return res.json({ success: true, message: `Account upgraded to ${plan}`, account });
+      return res.json({ success: true, message: `Account upgraded to ${plan} with 2,000 emails quota!`, account });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
     }
   }
 
-  res.json({ success: true, message: `Simulated upgrade to ${plan} (Local Mode)` });
+  // Local JSON fallback
+  const fs = require('fs');
+  const path = require('path');
+  const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'data') : path.join(__dirname, '../data');
+  const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
+  if (fs.existsSync(ACCOUNTS_FILE)) {
+    try {
+      const raw = fs.readFileSync(ACCOUNTS_FILE, 'utf8');
+      const accounts = JSON.parse(raw);
+      const acc = accounts.find(a => a.email.toLowerCase() === cleanEmail);
+      if (acc) {
+        acc.subscription = { plan: 'starter_2_99', status: 'active', accountLimit: 1 };
+        if (!acc.usage) acc.usage = { dailySentCount: 0, lastSentDate: new Date().toISOString().split('T')[0], dailyLimit: 2000, totalSentAllTime: 0 };
+        acc.usage.proSentCount = 0;
+        acc.usage.proLimit = 2000;
+        acc.usage.dailyLimit = 2000;
+        fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf8');
+      }
+    } catch (e) { }
+  }
+
+  res.json({ success: true, message: `Simulated upgrade to ${plan} (2,000 Emails Quota)` });
 });
 
 /**
@@ -205,7 +440,6 @@ router.post('/webhook', async (req, res) => {
     const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
     const signature = req.headers['x-signature'];
 
-    // Verify HMAC signature if secret & signature provided
     if (secret && signature) {
       try {
         const rawBody = req.rawBody || Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
@@ -245,17 +479,19 @@ router.post('/webhook', async (req, res) => {
       );
 
       if (isActivationEvent) {
-        // 1. Sync in MongoDB
+        // 1. Sync in MongoDB — grant fresh 2,000 emails quota
         if (getIsConnected()) {
           await Account.findOneAndUpdate(
             { email: customerEmail },
             {
               $set: {
-                'subscription.plan': 'starter_1_99',
+                'subscription.plan': 'starter_2_99',
                 'subscription.status': 'active',
                 'subscription.accountLimit': 1,
                 'subscription.lemonSqueezyCustomerId': attributes.customer_id ? String(attributes.customer_id) : null,
                 'subscription.lemonSqueezySubscriptionId': payload.data.id ? String(payload.data.id) : null,
+                'usage.proSentCount': 0,
+                'usage.proLimit': 2000,
                 'usage.dailyLimit': 2000
               }
             },
@@ -274,15 +510,17 @@ router.post('/webhook', async (req, res) => {
             const accounts = JSON.parse(raw);
             const acc = accounts.find(a => a.email.toLowerCase() === customerEmail);
             if (acc) {
-              acc.subscription = { plan: 'starter_1_99', status: 'active', accountLimit: 1 };
+              acc.subscription = { plan: 'starter_2_99', status: 'active', accountLimit: 1 };
               if (!acc.usage) acc.usage = { dailySentCount: 0, lastSentDate: new Date().toISOString().split('T')[0], dailyLimit: 2000, totalSentAllTime: 0 };
+              acc.usage.proSentCount = 0;
+              acc.usage.proLimit = 2000;
               acc.usage.dailyLimit = 2000;
               fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf8');
             }
           } catch (e) { }
         }
 
-        console.log(`[Webhook] 🟢 Successfully upgraded ${customerEmail} to Starter Pro ($1.99/mo)!`);
+        console.log(`[Webhook] 🟢 Successfully upgraded ${customerEmail} to Starter Pro (2,000 Emails)!`);
       } else if (eventName === 'subscription_cancelled' || eventName === 'subscription_expired') {
         if (getIsConnected()) {
           await Account.findOneAndUpdate(
@@ -326,17 +564,19 @@ router.post('/gumroad-webhook', async (req, res) => {
         }
         console.log(`[Gumroad Webhook] ⚠️ Subscription cancelled for ${customerEmail}`);
       } else {
-        // Activate Starter Pro ($1.99/mo)
+        // Activate Starter Pro ($2.99 for 2,000 emails)
         if (getIsConnected()) {
           await Account.findOneAndUpdate(
             { email: customerEmail },
             {
               $set: {
-                'subscription.plan': 'starter_1_99',
+                'subscription.plan': 'starter_2_99',
                 'subscription.status': 'active',
                 'subscription.accountLimit': 1,
                 'subscription.gumroadSaleId': saleId ? String(saleId) : null,
                 'subscription.licenseKey': licenseKey ? String(licenseKey) : null,
+                'usage.proSentCount': 0,
+                'usage.proLimit': 2000,
                 'usage.dailyLimit': 2000
               }
             },
@@ -355,15 +595,17 @@ router.post('/gumroad-webhook', async (req, res) => {
             const accounts = JSON.parse(raw);
             const acc = accounts.find(a => a.email.toLowerCase() === customerEmail);
             if (acc) {
-              acc.subscription = { plan: 'starter_1_99', status: 'active', accountLimit: 1, licenseKey };
+              acc.subscription = { plan: 'starter_2_99', status: 'active', accountLimit: 1, licenseKey };
               if (!acc.usage) acc.usage = { dailySentCount: 0, lastSentDate: new Date().toISOString().split('T')[0], dailyLimit: 2000, totalSentAllTime: 0 };
+              acc.usage.proSentCount = 0;
+              acc.usage.proLimit = 2000;
               acc.usage.dailyLimit = 2000;
               fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf8');
             }
           } catch (e) { }
         }
 
-        console.log(`[Gumroad Webhook] 🟢 Successfully upgraded ${customerEmail} to Starter Pro via Gumroad!`);
+        console.log(`[Gumroad Webhook] 🟢 Successfully upgraded ${customerEmail} to Starter Pro (2,000 Emails) via Gumroad!`);
       }
     }
 

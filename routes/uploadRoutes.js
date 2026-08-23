@@ -28,7 +28,7 @@ router.get('/status', (req, res) => {
 
 /**
  * POST /api/upload
- * Upload PDF, Image, or Document to Cloudinary (Exclusive to $1.99 Starter Plan)
+ * Upload PDF, Image, or Document to Cloudinary (Exclusive to $2.99 Starter Plan)
  */
 router.post('/', upload.single('file'), async (req, res) => {
   const uploaderEmail = (req.body.uploaderEmail || '').toLowerCase().trim();
@@ -39,7 +39,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     if (getIsConnected()) {
       try {
         const dbAcc = await Account.findOne({ email: uploaderEmail });
-        if (dbAcc && dbAcc.subscription && (dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active') {
+        if (dbAcc && dbAcc.subscription && (dbAcc.subscription.plan === 'starter_2_99' || dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active') {
           isPro = true;
         }
       } catch (e) { }
@@ -47,7 +47,7 @@ router.post('/', upload.single('file'), async (req, res) => {
 
     if (!isPro) {
       const localAcc = getAccount(uploaderEmail);
-      if (localAcc && localAcc.subscription && localAcc.subscription.plan === 'starter_1_99' && localAcc.subscription.status === 'active') {
+      if (localAcc && localAcc.subscription && (localAcc.subscription.plan === 'starter_2_99' || localAcc.subscription.plan === 'starter_1_99' || localAcc.subscription.plan === 'pro') && localAcc.subscription.status === 'active') {
         isPro = true;
       }
     }
@@ -58,7 +58,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     return res.status(403).json({
       success: false,
       upgradeRequired: true,
-      error: '📄 PDF and file attachments are exclusive to the Starter Plan ($1.99/mo). Please upgrade your account to send attachments.',
+      error: '📄 PDF and file attachments are exclusive to the Starter Plan ($2.99). Please upgrade your account to send attachments.',
       checkoutUrl: prefilledCheckoutUrl
     });
   }

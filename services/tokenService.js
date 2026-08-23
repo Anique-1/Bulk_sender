@@ -139,7 +139,9 @@ async function saveAccount(profile, tokens, profileId) {
       dailySentCount: (existingAccount && existingAccount.usage) ? (existingAccount.usage.dailySentCount || 0) : 0,
       lastSentDate: (existingAccount && existingAccount.usage && existingAccount.usage.lastSentDate) ? existingAccount.usage.lastSentDate : new Date().toISOString().split('T')[0],
       dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25,
-      totalSentAllTime: (existingAccount && existingAccount.usage) ? (existingAccount.usage.totalSentAllTime || 0) : 0
+      totalSentAllTime: (existingAccount && existingAccount.usage) ? (existingAccount.usage.totalSentAllTime || 0) : 0,
+      proSentCount: (existingAccount && existingAccount.usage) ? (existingAccount.usage.proSentCount || 0) : 0,
+      proLimit: 2000
     },
     connectedAt: new Date().toISOString()
   };
@@ -237,7 +239,9 @@ async function saveManualAccount({ email, name, appPassword, host, port, secure,
       dailySentCount: (existingAccount && existingAccount.usage) ? existingAccount.usage.dailySentCount : 0,
       lastSentDate: new Date().toISOString().split('T')[0],
       dailyLimit: defaultPlan === 'starter_1_99' ? 2000 : 25,
-      totalSentAllTime: (existingAccount && existingAccount.usage) ? (existingAccount.usage.totalSentAllTime || 0) : 0
+      totalSentAllTime: (existingAccount && existingAccount.usage) ? (existingAccount.usage.totalSentAllTime || 0) : 0,
+      proSentCount: (existingAccount && existingAccount.usage) ? (existingAccount.usage.proSentCount || 0) : 0,
+      proLimit: 2000
     },
     connectedAt: new Date().toISOString()
   };
@@ -362,7 +366,7 @@ async function getAuthenticatedClient(email, profileId) {
 }
 
 /**
- * Get daily quota usage for an email
+ * Get quota usage for an email (Pro: 2000 total email quota; Free: 25 lifetime emails)
  */
 async function getDailyUsage(email, profileId) {
   const cleanEmail = (email || '').toLowerCase().trim();
@@ -371,23 +375,50 @@ async function getDailyUsage(email, profileId) {
   if (getIsConnected()) {
     try {
       let dbAcc = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
-      if (!dbAcc || !dbAcc.usage || (dbAcc.usage.totalSentAllTime === 0 && dbAcc.usage.dailySentCount === 0)) {
-        const fallbackAcc = await Account.findOne({ email: cleanEmail, $or: [{ 'usage.totalSentAllTime': { $gt: 0 } }, { 'usage.dailySentCount': { $gt: 0 } }] }) || await Account.findOne({ email: cleanEmail });
+      if (!dbAcc || !dbAcc.usage || (dbAcc.usage.totalSentAllTime === 0 && dbAcc.usage.dailySentCount === 0 && (dbAcc.usage.proSentCount === undefined || dbAcc.usage.proSentCount === 0))) {
+        const fallbackAcc = await Account.findOne({ email: cleanEmail, $or: [{ 'usage.totalSentAllTime': { $gt: 0 } }, { 'usage.proSentCount': { $gt: 0 } }, { 'usage.dailySentCount': { $gt: 0 } }] }) || await Account.findOne({ email: cleanEmail });
         if (fallbackAcc) {
           dbAcc = fallbackAcc;
         }
       }
       if (dbAcc) {
-        const isPro = dbAcc.subscription && (dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active';
-        const sentToday = (dbAcc.usage && dbAcc.usage.lastSentDate === todayStr) ? (dbAcc.usage.dailySentCount || 0) : 0;
-        const totalSent = dbAcc.usage ? (dbAcc.usage.totalSentAllTime || 0) : 0;
-        const limit = isPro ? 2000 : 25;
-        const sent = isPro ? sentToday : totalSent;
+        const isPlanPro = dbAcc.subscription && (dbAcc.subscription.plan === 'starter_2_99' || dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro');
+        const proLimit = (dbAcc.usage && dbAcc.usage.proLimit) || 2000;
+        const proSent = (dbAcc.usage && dbAcc.usage.proSentCount !== undefined) ? dbAcc.usage.proSentCount : 0;
+        const totalSent = (dbAcc.usage && dbAcc.usage.totalSentAllTime !== undefined) ? dbAcc.usage.totalSentAllTime : 0;
+
+        if (isPlanPro) {
+          const isLimitEnded = proSent >= proLimit;
+          const isPro = dbAcc.subscription.status === 'active' && !isLimitEnded;
+          const currentStatus = isLimitEnded ? 'expired' : dbAcc.subscription.status;
+
+          // If limit just ended in DB, sync status
+          if (isLimitEnded && dbAcc.subscription.status === 'active') {
+            await Account.updateOne({ email: cleanEmail }, { $set: { 'subscription.status': 'expired' } }).catch(() => {});
+          }
+
+          return {
+            isPro,
+            isLimitEnded,
+            sentToday: proSent,
+            sent: proSent,
+            limit: proLimit,
+            remaining: Math.max(0, proLimit - proSent),
+            plan: dbAcc.subscription.plan,
+            status: currentStatus,
+            expiryDate: dbAcc.subscription.currentPeriodEnd || dbAcc.subscription.trialEndsAt || null
+          };
+        }
+
+        // Free Plan
+        const freeLimit = 25;
         return {
-          isPro,
-          sentToday: sent,
-          limit,
-          remaining: Math.max(0, limit - sent),
+          isPro: false,
+          isLimitEnded: totalSent >= freeLimit,
+          sentToday: totalSent,
+          sent: totalSent,
+          limit: freeLimit,
+          remaining: Math.max(0, freeLimit - totalSent),
           plan: dbAcc.subscription ? dbAcc.subscription.plan : 'free',
           status: dbAcc.subscription ? dbAcc.subscription.status : 'trial',
           expiryDate: dbAcc.subscription ? (dbAcc.subscription.currentPeriodEnd || dbAcc.subscription.trialEndsAt) : null
@@ -398,17 +429,39 @@ async function getDailyUsage(email, profileId) {
     }
   }
 
+  // Local JSON fallback
   const localAcc = getAccount(cleanEmail, profileId);
-  const isPro = localAcc && localAcc.subscription && localAcc.subscription.plan === 'starter_1_99' && localAcc.subscription.status === 'active';
-  const sentToday = (localAcc && localAcc.usage && localAcc.usage.lastSentDate === todayStr) ? (localAcc.usage.dailySentCount || 0) : 0;
-  const totalSent = localAcc && localAcc.usage ? (localAcc.usage.totalSentAllTime || 0) : 0;
-  const limit = isPro ? 2000 : 25;
-  const sent = isPro ? sentToday : totalSent;
+  const isPlanPro = localAcc && localAcc.subscription && (localAcc.subscription.plan === 'starter_2_99' || localAcc.subscription.plan === 'starter_1_99' || localAcc.subscription.plan === 'pro');
+  const proLimit = (localAcc && localAcc.usage && localAcc.usage.proLimit) || 2000;
+  const proSent = (localAcc && localAcc.usage && localAcc.usage.proSentCount !== undefined) ? localAcc.usage.proSentCount : 0;
+  const totalSent = (localAcc && localAcc.usage && localAcc.usage.totalSentAllTime !== undefined) ? localAcc.usage.totalSentAllTime : 0;
+
+  if (isPlanPro) {
+    const isLimitEnded = proSent >= proLimit;
+    const isPro = localAcc.subscription.status === 'active' && !isLimitEnded;
+    const currentStatus = isLimitEnded ? 'expired' : localAcc.subscription.status;
+
+    return {
+      isPro,
+      isLimitEnded,
+      sentToday: proSent,
+      sent: proSent,
+      limit: proLimit,
+      remaining: Math.max(0, proLimit - proSent),
+      plan: localAcc.subscription.plan,
+      status: currentStatus,
+      expiryDate: localAcc.subscription.currentPeriodEnd || localAcc.subscription.trialEndsAt || null
+    };
+  }
+
+  const freeLimit = 25;
   return {
-    isPro,
-    sentToday: sent,
-    limit,
-    remaining: Math.max(0, limit - sent),
+    isPro: false,
+    isLimitEnded: totalSent >= freeLimit,
+    sentToday: totalSent,
+    sent: totalSent,
+    limit: freeLimit,
+    remaining: Math.max(0, freeLimit - totalSent),
     plan: localAcc && localAcc.subscription ? localAcc.subscription.plan : 'free',
     status: localAcc && localAcc.subscription ? localAcc.subscription.status : 'trial',
     expiryDate: localAcc && localAcc.subscription ? (localAcc.subscription.currentPeriodEnd || localAcc.subscription.trialEndsAt) : null
@@ -416,7 +469,7 @@ async function getDailyUsage(email, profileId) {
 }
 
 /**
- * Increment daily sent count in both MongoDB and local accounts.json
+ * Increment sent count in both MongoDB and local accounts.json
  */
 async function incrementDailySent(email, profileId) {
   const cleanEmail = (email || '').toLowerCase().trim();
@@ -426,16 +479,28 @@ async function incrementDailySent(email, profileId) {
   const accounts = loadAccounts(profileId);
   const acc = accounts.find(a => a.email.toLowerCase() === cleanEmail);
   if (acc) {
-    if (!acc.usage || acc.usage.lastSentDate !== todayStr) {
+    if (!acc.usage) {
       acc.usage = {
         dailySentCount: 0,
         lastSentDate: todayStr,
-        dailyLimit: acc.subscription && acc.subscription.plan === 'starter_1_99' ? 2000 : 25,
-        totalSentAllTime: (acc.usage && acc.usage.totalSentAllTime) || 0
+        dailyLimit: 2000,
+        totalSentAllTime: 0,
+        proSentCount: 0,
+        proLimit: 2000
       };
     }
     acc.usage.dailySentCount = (acc.usage.dailySentCount || 0) + 1;
+    acc.usage.lastSentDate = todayStr;
     acc.usage.totalSentAllTime = (acc.usage.totalSentAllTime || 0) + 1;
+
+    const isProPlan = acc.subscription && (acc.subscription.plan === 'starter_2_99' || acc.subscription.plan === 'starter_1_99' || acc.subscription.plan === 'pro');
+    if (isProPlan) {
+      acc.usage.proSentCount = (acc.usage.proSentCount || 0) + 1;
+      const proLimit = acc.usage.proLimit || 2000;
+      if (acc.usage.proSentCount >= proLimit) {
+        acc.subscription.status = 'expired';
+      }
+    }
     saveAccounts(accounts, profileId);
   }
 
@@ -444,16 +509,28 @@ async function incrementDailySent(email, profileId) {
     try {
       const dbAcc = await Account.findOne({ email: cleanEmail, profileId: profileId || null });
       if (dbAcc) {
-        if (!dbAcc.usage || dbAcc.usage.lastSentDate !== todayStr) {
+        if (!dbAcc.usage) {
           dbAcc.usage = {
             dailySentCount: 1,
             lastSentDate: todayStr,
-            dailyLimit: dbAcc.subscription && dbAcc.subscription.plan === 'starter_1_99' ? 2000 : 25,
-            totalSentAllTime: (dbAcc.usage ? dbAcc.usage.totalSentAllTime : 0) + 1
+            dailyLimit: 2000,
+            totalSentAllTime: 1,
+            proSentCount: 0,
+            proLimit: 2000
           };
         } else {
           dbAcc.usage.dailySentCount = (dbAcc.usage.dailySentCount || 0) + 1;
+          dbAcc.usage.lastSentDate = todayStr;
           dbAcc.usage.totalSentAllTime = (dbAcc.usage.totalSentAllTime || 0) + 1;
+        }
+
+        const isProPlan = dbAcc.subscription && (dbAcc.subscription.plan === 'starter_2_99' || dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro');
+        if (isProPlan) {
+          dbAcc.usage.proSentCount = (dbAcc.usage.proSentCount || 0) + 1;
+          const proLimit = dbAcc.usage.proLimit || 2000;
+          if (dbAcc.usage.proSentCount >= proLimit) {
+            dbAcc.subscription.status = 'expired';
+          }
         }
         await dbAcc.save();
       }

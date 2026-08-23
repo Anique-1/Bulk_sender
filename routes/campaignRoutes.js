@@ -37,31 +37,42 @@ router.post('/start', async (req, res) => {
     ? `${CHECKOUT_URL}&email=${encodeURIComponent(cleanSender)}`
     : `${CHECKOUT_URL}?checkout[email]=${encodeURIComponent(cleanSender)}`;
 
-  // 1. Check Plan Status & Real-time Daily Usage for this Sender Account
+  // 1. Check Plan Status & Real-time Usage for this Sender Account
   const usage = await getDailyUsage(cleanSender, profileId);
 
-  // 2. Enforce Free Plan Limits (5 emails/day, no PDF/file attachments)
+  // 2. Enforce Plan Limits
   if (!usage.isPro) {
-    const FREE_LIMIT = usage.limit || 5;
-    const sentToday = usage.sentToday || 0;
-
-    // Check if daily limit already reached or exceeded
-    if (sentToday >= FREE_LIMIT) {
+    const isProExpired = (usage.plan === 'starter_2_99' || usage.plan === 'starter_1_99' || usage.plan === 'pro') && (usage.remaining <= 0 || usage.status === 'expired' || usage.isLimitEnded);
+    
+    if (isProExpired) {
       return res.status(403).json({
         success: false,
         upgradeRequired: true,
-        error: `Daily Free Trial limit reached (${sentToday}/${FREE_LIMIT} emails sent today). Please upgrade to Starter Pro ($1.99/mo) to unlock 2,000 emails/day!`,
+        error: `Your 2,000 emails Pro quota has ended (${usage.sent || 2000}/2,000 used). Please upgrade to renew your 2,000 emails package!`,
+        checkoutUrl: prefilledCheckout
+      });
+    }
+
+    const FREE_LIMIT = usage.limit || 25;
+    const sentCount = usage.sent || 0;
+
+    // Check if free trial limit reached
+    if (sentCount >= FREE_LIMIT || usage.remaining <= 0) {
+      return res.status(403).json({
+        success: false,
+        upgradeRequired: true,
+        error: `Free Trial limit reached (${sentCount}/${FREE_LIMIT} emails used). Please upgrade to Starter Pro ($2.99) for 2,000 emails!`,
         checkoutUrl: prefilledCheckout
       });
     }
 
     // Check recipients count vs remaining quota
-    if (recipients.length > (FREE_LIMIT - sentToday)) {
-      const remaining = Math.max(0, FREE_LIMIT - sentToday);
+    if (recipients.length > (FREE_LIMIT - sentCount)) {
+      const remaining = Math.max(0, FREE_LIMIT - sentCount);
       return res.status(403).json({
         success: false,
         upgradeRequired: true,
-        error: `You have ${remaining} emails left today (${sentToday}/${FREE_LIMIT} used), but entered ${recipients.length} recipients. Upgrade to Starter Pro ($1.99/mo) for 2,000 emails/day!`,
+        error: `You have ${remaining} emails left (${sentCount}/${FREE_LIMIT} used), but entered ${recipients.length} recipients. Upgrade to Starter Pro ($2.99) for 2,000 emails!`,
         checkoutUrl: prefilledCheckout
       });
     }
@@ -71,7 +82,17 @@ router.post('/start', async (req, res) => {
       return res.status(403).json({
         success: false,
         upgradeRequired: true,
-        error: 'PDF and image attachments are exclusive to the Starter Pro ($1.99/mo) plan.',
+        error: 'PDF and file attachments require an active Starter Pro ($2.99) plan.',
+        checkoutUrl: prefilledCheckout
+      });
+    }
+  } else {
+    // Pro user active - verify recipient count does not exceed remaining Pro quota
+    if (recipients.length > usage.remaining) {
+      return res.status(403).json({
+        success: false,
+        upgradeRequired: true,
+        error: `You have ${usage.remaining} emails remaining in your 2,000 email Pro quota, but entered ${recipients.length} recipients. Please reduce recipients or upgrade to renew your quota.`,
         checkoutUrl: prefilledCheckout
       });
     }

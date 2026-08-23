@@ -27,11 +27,11 @@ const AccountSchema = new mongoose.Schema({
     pass: { type: String }
   },
 
-  // Subscription & $1.99 Plan Details
+  // Subscription & $2.99 Plan Details
   subscription: {
-    plan: { type: String, enum: ['free', 'starter_1_99', 'pro', 'lifetime'], default: 'free' },
+    plan: { type: String, enum: ['free', 'starter_2_99', 'starter_1_99', 'pro', 'lifetime'], default: 'free' },
     status: { type: String, enum: ['active', 'inactive', 'trial', 'cancelled', 'expired'], default: 'trial' },
-    accountLimit: { type: Number, default: 1 }, // 1 Gmail account per $1.99 license
+    accountLimit: { type: Number, default: 1 }, // 1 Gmail account per $2.99 license
     lemonSqueezyCustomerId: { type: String, default: null },
     lemonSqueezySubscriptionId: { type: String, default: null },
     licenseKey: { type: String, default: null },
@@ -46,8 +46,10 @@ const AccountSchema = new mongoose.Schema({
   usage: {
     dailySentCount: { type: Number, default: 0 },
     lastSentDate: { type: String, default: () => new Date().toISOString().split('T')[0] },
-    dailyLimit: { type: Number, default: 5 }, // Free Trial: 5, Starter Pro: 2000
-    totalSentAllTime: { type: Number, default: 0 }
+    dailyLimit: { type: Number, default: 25 }, // Free Trial: 25, Starter Pro: 2000
+    totalSentAllTime: { type: Number, default: 0 },
+    proSentCount: { type: Number, default: 0 }, // Emails sent under current 2,000 Pro package
+    proLimit: { type: Number, default: 2000 }    // Pro quota limit: 2,000 emails per upgrade
   },
 
   connectedAt: { type: Date, default: Date.now },

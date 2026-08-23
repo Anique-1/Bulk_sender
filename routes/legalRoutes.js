@@ -266,7 +266,7 @@ const TERMS_HTML = `<!DOCTYPE html>
     <p>You acknowledge that you are using your own connected Gmail account to dispatch emails. You are responsible for maintaining good sender reputation and abiding by Gmail's daily sending limits.</p>
 
     <h2>3. Subscriptions & Payments</h2>
-    <p>Paid tiers (such as Starter Plan at $1.99/mo) are managed via Gumroad. Subscriptions can be canceled at any time from your customer billing portal or receipt email.</p>
+    <p>Paid tiers (such as Starter Plan at $2.99) are managed via Gumroad.</p>
 
     <h2>4. Disclaimer & Limitation of Liability</h2>
     <p>The software is provided "as is" without warranty of any kind. SendEO shall not be liable for account suspensions or deliverability issues resulting from violation of email provider guidelines.</p>

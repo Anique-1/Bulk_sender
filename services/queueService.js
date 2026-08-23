@@ -128,13 +128,16 @@ class CampaignQueueService extends EventEmitter {
           error: null
         };
 
-        // Check real-time daily quota limit
+        // Check real-time quota limit
         try {
           const usage = await getDailyUsage(job.senderEmail, job.profileId);
-          console.log(`[QueueService] Quota check: sentToday=${usage.sentToday}, limit=${usage.limit}, isPro=${usage.isPro}`);
-          if (!usage.isPro && usage.sentToday >= usage.limit) {
+          console.log(`[QueueService] Quota check: sent=${usage.sent}, limit=${usage.limit}, remaining=${usage.remaining}, isPro=${usage.isPro}`);
+          if (usage.remaining <= 0 || (!usage.isPro && usage.sent >= usage.limit)) {
             logEntry.status = 'failed';
-            logEntry.error = `Free Trial daily limit reached (${usage.sentToday}/${usage.limit} emails sent today). Please upgrade to Starter Pro ($1.99/mo) for 2,000/day.`;
+            const isProPlan = usage.plan === 'starter_2_99' || usage.plan === 'starter_1_99' || usage.plan === 'pro';
+            logEntry.error = isProPlan 
+              ? `Pro 2,000 emails quota ended (${usage.sent || 2000}/2,000 used). Please upgrade to renew your 2,000 emails package!`
+              : `Free Trial limit reached (${usage.sent}/${usage.limit} emails used). Please upgrade to Starter Pro ($2.99) for 2,000 emails!`;
             job.failed++;
             job.logs.push(logEntry);
 
