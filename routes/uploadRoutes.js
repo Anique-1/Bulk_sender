@@ -4,7 +4,9 @@ const multer = require('multer');
 const { uploadToCloudinary, deleteFromCloudinary, listRecentFiles } = require('../services/cloudinaryService');
 const { isCloudinaryConfigured } = require('../config/cloudinary');
 const { getAccount } = require('../services/tokenService');
+const { getIsConnected } = require('../config/db');
 const Account = require('../models/Account');
+
 const CHECKOUT_URL = process.env.GUMROAD_CHECKOUT_URL || 'https://muhammadanique.gumroad.com/l/wlgzrc?wanted=true';
 
 // Multer memory storage (works seamlessly in serverless and standard Node)
@@ -30,44 +32,62 @@ router.get('/status', (req, res) => {
  * POST /api/upload
  * Upload PDF, Image, or Document to Cloudinary (Exclusive to $2.99 Starter Plan)
  */
-router.post('/', upload.single('file'), async (req, res) => {
-  const uploaderEmail = (req.body.uploaderEmail || '').toLowerCase().trim();
+router.post('/', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, error: 'File is too large. Maximum size is 25MB.' });
+      }
+      return res.status(400).json({ success: false, error: err.message || 'File upload error' });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    const uploaderEmail = (req.body.uploaderEmail || '').toLowerCase().trim();
+    const profileId = req.headers['x-profile-id'] || null;
 
-  // Check Plan Permissions: Free plan cannot upload PDF/attachments
-  let isPro = false;
-  if (uploaderEmail) {
-    if (getIsConnected()) {
-      try {
-        const dbAcc = await Account.findOne({ email: uploaderEmail });
-        if (dbAcc && dbAcc.subscription && (dbAcc.subscription.plan === 'starter_2_99' || dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active') {
+    // Check Plan Permissions: Free plan cannot upload PDF/attachments
+    let isPro = false;
+    if (uploaderEmail) {
+      if (getIsConnected()) {
+        try {
+          const dbAcc = await Account.findOne({ email: uploaderEmail, ...(profileId ? { profileId } : {}) });
+          if (dbAcc && dbAcc.subscription && (dbAcc.subscription.plan === 'starter_2_99' || dbAcc.subscription.plan === 'starter_1_99' || dbAcc.subscription.plan === 'pro') && dbAcc.subscription.status === 'active') {
+            isPro = true;
+          }
+        } catch (e) { }
+      }
+
+      if (!isPro) {
+        const localAcc = getAccount(uploaderEmail, profileId);
+        if (localAcc && localAcc.subscription && (localAcc.subscription.plan === 'starter_2_99' || localAcc.subscription.plan === 'starter_1_99' || localAcc.subscription.plan === 'pro') && localAcc.subscription.status === 'active') {
           isPro = true;
         }
-      } catch (e) { }
+      }
     }
 
     if (!isPro) {
-      const localAcc = getAccount(uploaderEmail);
-      if (localAcc && localAcc.subscription && (localAcc.subscription.plan === 'starter_2_99' || localAcc.subscription.plan === 'starter_1_99' || localAcc.subscription.plan === 'pro') && localAcc.subscription.status === 'active') {
-        isPro = true;
-      }
+      const prefilledCheckoutUrl = `${CHECKOUT_URL}?checkout[email]=${encodeURIComponent(uploaderEmail)}`;
+      return res.status(403).json({
+        success: false,
+        upgradeRequired: true,
+        error: '📄 PDF and file attachments are exclusive to the Starter Plan ($2.99). Please upgrade your account to send attachments.',
+        checkoutUrl: prefilledCheckoutUrl
+      });
     }
-  }
 
-  if (!isPro) {
-    const prefilledCheckoutUrl = `${CHECKOUT_URL}?checkout[email]=${encodeURIComponent(uploaderEmail)}`;
-    return res.status(403).json({
-      success: false,
-      upgradeRequired: true,
-      error: '📄 PDF and file attachments are exclusive to the Starter Plan ($2.99). Please upgrade your account to send attachments.',
-      checkoutUrl: prefilledCheckoutUrl
-    });
-  }
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file provided. Please select a file to upload.' });
+    }
 
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: 'No file provided' });
-  }
+    if (!isCloudinaryConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error: 'Cloudinary storage is not configured on the server. Please check your CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET settings.'
+      });
+    }
 
-  try {
     const uploadedFile = await uploadToCloudinary({
       buffer: req.file.buffer,
       originalname: req.file.originalname,
@@ -81,7 +101,7 @@ router.post('/', upload.single('file'), async (req, res) => {
       message: 'File uploaded to Cloudinary successfully'
     });
   } catch (err) {
-    console.error('Error uploading file to Cloudinary:', err);
+    console.error('[Upload] Error uploading file to Cloudinary:', err);
     res.status(500).json({
       success: false,
       error: err.message || 'Failed to upload file to Cloudinary'
